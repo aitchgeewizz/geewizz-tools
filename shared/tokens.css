@@ -1,0 +1,28 @@
+/*
+  Geewizz Tools — design tokens
+  These are duplicated inline inside each tool's HTML file so tools stay
+  self-contained when downloaded standalone. The dashboard links to this file.
+*/
+
+:root {
+  /* Colours */
+  --bg: #f4efe6;            /* warm cream page background */
+  --bg-card: #fbf8f1;       /* slightly lighter card surface */
+  --ink: #1a1816;           /* near-black text */
+  --ink-soft: #5a544c;      /* soft grey for secondary text */
+  --ink-faint: #9c948a;     /* faint grey for labels and captions */
+  --line: #d8cfbe;          /* tan border colour */
+  --accent: #4866ab;        /* surfy blue, primary accent */
+  --accent-soft: #dbe2ef;   /* pale blue for hover and drag states */
+  --accent-light: #8aa0e0;  /* lighter blue for use on dark backgrounds */
+  --good: #2dd4bf;          /* bright aqua for success backgrounds */
+  --good-deep: #0a6e63;     /* deep aqua for success text on light bg */
+
+  /* Typography */
+  --font-display: 'Bricolage Grotesque', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Motion */
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
+}

@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Squish — batch image compressor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --bg: #f4efe6;
+    --bg-card: #fbf8f1;
+    --ink: #1a1816;
+    --ink-soft: #5a544c;
+    --ink-faint: #9c948a;
+    --line: #d8cfbe;
+    --accent: #4866ab;
+    --accent-soft: #dbe2ef;
+    --accent-light: #8aa0e0;
+    --good: #2dd4bf;
+    --good-deep: #0a6e63;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  body {
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(72, 102, 171, 0.05) 0%, transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(72, 102, 171, 0.04) 0%, transparent 40%);
+    background-attachment: fixed;
+  }
+
+  /* subtle grain */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.4;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.1 0 0 0 0 0.1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    z-index: 0;
+  }
+
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 48px 32px 80px;
+    position: relative;
+    z-index: 1;
+  }
+
+  header {
+    margin-bottom: 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 24px;
+  }
+
+  .brand h1 {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-weight: 400;
+    font-stretch: 80%;
+    font-size: 76px;
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    font-optical-sizing: auto;
+    display: inline-block;
+    animation: squishIntro 1.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: font-weight 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+                font-stretch 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: default;
+  }
+
+  .brand h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .brand h1:hover {
+    font-weight: 750;
+    font-stretch: 100%;
+  }
+
+  @keyframes squishIntro {
+    0%   { font-weight: 200; font-stretch: 75%; }
+    55%  { font-weight: 800; font-stretch: 100%; }
+    100% { font-weight: 400; font-stretch: 80%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .brand h1 { animation: none; transition: none; }
+    .brand h1:hover { font-weight: 400; font-stretch: 80%; }
+  }
+
+  .brand p {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    margin-top: 12px;
+    max-width: 480px;
+  }
+
+  .meta {
+    text-align: right;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-faint);
+  }
+
+  .meta span { color: var(--accent); font-weight: 700; }
+
+  /* Controls */
+  .controls {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 24px;
+    align-items: end;
+  }
+
+  .control label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    margin-bottom: 8px;
+    font-weight: 700;
+  }
+
+  .control .value {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 28px;
+    font-weight: 500;
+    font-stretch: 100%;
+    font-optical-sizing: auto;
+    line-height: 1;
+    color: var(--ink);
+  }
+
+  .control .value span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-left: 4px;
+  }
+
+  input[type="range"] {
+    width: 100%;
+    margin-top: 8px;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--line);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    background: var(--accent);
+    cursor: pointer;
+    border-radius: 50%;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px;
+    background: var(--accent);
+    cursor: pointer;
+    border-radius: 50%;
+    border: none;
+  }
+
+  .format-toggle {
+    display: flex;
+    border: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .format-toggle button {
+    padding: 8px 14px;
+    background: transparent;
+    border: none;
+    font-family: inherit;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    color: var(--ink-soft);
+    transition: all 0.15s;
+  }
+  .format-toggle button.active {
+    background: var(--ink);
+    color: var(--bg-card);
+  }
+  .format-toggle button:hover:not(.active) {
+    color: var(--ink);
+  }
+
+  /* Drop zone */
+  .drop {
+    border: 2px dashed var(--line);
+    background: var(--bg-card);
+    padding: 80px 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 24px;
+    position: relative;
+  }
+  .drop:hover, .drop.drag {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .drop.drag {
+    transform: scale(1.005);
+  }
+
+  .drop-icon {
+    color: var(--accent);
+    line-height: 0;
+    margin-bottom: 4px;
+    display: inline-block;
+  }
+  .drop-icon svg {
+    width: 56px;
+    height: 56px;
+    display: block;
+  }
+
+  .drop h2 {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-weight: 500;
+    font-stretch: 100%;
+    font-optical-sizing: auto;
+    font-size: 32px;
+    margin: 16px 0 8px;
+    letter-spacing: -0.01em;
+  }
+
+  .drop p {
+    color: var(--ink-soft);
+    font-size: 13px;
+  }
+
+  .drop p code {
+    background: var(--bg);
+    padding: 2px 8px;
+    border: 1px solid var(--line);
+    font-size: 11px;
+  }
+
+  #file-input { display: none; }
+
+  /* Files */
+  .files {
+    margin-bottom: 24px;
+  }
+
+  .file-row {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    padding: 16px;
+    margin-bottom: 8px;
+    display: grid;
+    grid-template-columns: 64px 1fr auto auto;
+    gap: 16px;
+    align-items: center;
+  }
+
+  .thumb {
+    width: 64px; height: 64px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .thumb img {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+
+  .info .name {
+    font-size: 13px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 380px;
+  }
+  .info .stats {
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-top: 4px;
+  }
+  .info .stats .arrow { color: var(--accent); margin: 0 6px; }
+  .info .stats .savings {
+    color: var(--good-deep);
+    font-weight: 700;
+    margin-left: 8px;
+  }
+  .info .stats .processing { color: var(--accent); font-style: italic; }
+
+  .file-row .badge {
+    font-size: 10px;
+    padding: 4px 10px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-soft);
+  }
+  .file-row .badge.done { background: var(--good); color: var(--ink); border-color: var(--good); }
+  .file-row .badge.error { background: var(--accent); color: var(--bg-card); border-color: var(--accent); }
+
+  .btn-icon {
+    background: transparent;
+    border: 1px solid var(--line);
+    width: 36px; height: 36px;
+    cursor: pointer;
+    color: var(--ink-soft);
+    transition: all 0.15s;
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .btn-icon:hover {
+    background: var(--ink);
+    color: var(--bg-card);
+    border-color: var(--ink);
+  }
+
+  /* Summary bar */
+  .summary {
+    background: var(--ink);
+    color: var(--bg-card);
+    padding: 22px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    gap: 24px;
+  }
+
+  .summary-stats {
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+
+  .summary-stat .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    margin-bottom: 6px;
+  }
+  .summary-stat .value {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 22px;
+    font-weight: 500;
+    font-stretch: 100%;
+    font-optical-sizing: auto;
+    line-height: 1;
+    letter-spacing: -0.01em;
+  }
+  .summary-stat .value.accent { color: var(--accent-light); }
+
+  .actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn {
+    padding: 12px 20px;
+    background: var(--accent);
+    color: var(--bg-card);
+    border: 1px solid var(--accent);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn:hover {
+    background: transparent;
+    color: var(--accent);
+  }
+  .btn.ghost {
+    background: transparent;
+    color: var(--bg-card);
+    border-color: var(--ink-faint);
+  }
+  .btn.ghost:hover {
+    border-color: var(--bg-card);
+    color: var(--bg-card);
+  }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  footer {
+    margin-top: 48px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--ink-soft);
+    line-height: 1.7;
+  }
+  footer em { font-style: normal; }
+
+  .hidden { display: none; }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 32px 20px; }
+    .brand h1 { font-size: 52px; }
+    header { flex-direction: column; align-items: flex-start; gap: 16px; }
+    .meta { text-align: left; }
+    .controls { grid-template-columns: 1fr; gap: 20px; }
+    .summary { flex-direction: column; gap: 20px; align-items: flex-start; }
+    .summary-stats { flex-wrap: wrap; gap: 24px; }
+    .file-row { grid-template-columns: 48px 1fr auto; }
+    .file-row .badge { display: none; }
+    .thumb { width: 48px; height: 48px; }
+    .info .name { max-width: 200px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>Squish<em>.</em></h1>
+      <p>Drag images in, get small ones out. No uploads, no sign-ups, all happens right here in your browser.</p>
+    </div>
+    <div class="meta">
+      <div>v1.0</div>
+      <div>by <span>HG</span></div>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="control">
+      <label for="quality">Quality</label>
+      <div class="value"><span id="quality-val">78</span><span>/100</span></div>
+      <input type="range" id="quality" min="30" max="95" value="78">
+    </div>
+    <div class="control">
+      <label for="maxdim">Max dimension</label>
+      <div class="value"><span id="maxdim-val">1920</span><span>px</span></div>
+      <input type="range" id="maxdim" min="640" max="4096" step="160" value="1920">
+    </div>
+    <div class="control">
+      <label>Output format</label>
+      <div class="format-toggle" id="format-toggle">
+        <button data-fmt="jpeg" class="active">JPEG</button>
+        <button data-fmt="webp">WebP</button>
+        <button data-fmt="png">PNG</button>
+      </div>
+    </div>
+    <button class="btn" id="reprocess-btn" disabled>Re-squish</button>
+  </div>
+
+  <div class="drop" id="drop">
+    <div class="drop-icon">
+      <svg viewBox="0 0 32 56" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="16" y1="6" x2="16" y2="48"/>
+        <path d="M5 38 L16 50 L27 38"/>
+      </svg>
+    </div>
+    <h2>Drop your images here</h2>
+    <p>Or <strong>click anywhere</strong> in this box. Takes JPEG, PNG, WebP, HEIC. Drop a whole folder if you want, no judgement.</p>
+    <input type="file" id="file-input" multiple accept="image/*">
+  </div>
+
+  <div class="files" id="files"></div>
+
+  <div class="summary hidden" id="summary">
+    <div class="summary-stats">
+      <div class="summary-stat">
+        <div class="label">Files</div>
+        <div class="value" id="stat-count">0</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Original</div>
+        <div class="value" id="stat-before">0</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Squished</div>
+        <div class="value" id="stat-after">0</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Saved</div>
+        <div class="value accent" id="stat-saved">0%</div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" id="clear-btn">Clear</button>
+      <button class="btn" id="zip-btn">Download all (.zip)</button>
+    </div>
+  </div>
+
+  <footer>
+    <p><em>Everything happens locally in your browser.</em> Your photos never touch a server.</p>
+    <p>Save this file anywhere. Bookmark it. Open it offline. It just works.</p>
+  </footer>
+</div>
+
+<script>
+  const dropEl = document.getElementById('drop');
+  const fileInput = document.getElementById('file-input');
+  const filesEl = document.getElementById('files');
+  const summaryEl = document.getElementById('summary');
+  const qualityInput = document.getElementById('quality');
+  const maxdimInput = document.getElementById('maxdim');
+  const qualityVal = document.getElementById('quality-val');
+  const maxdimVal = document.getElementById('maxdim-val');
+  const formatToggle = document.getElementById('format-toggle');
+  const reprocessBtn = document.getElementById('reprocess-btn');
+  const zipBtn = document.getElementById('zip-btn');
+  const clearBtn = document.getElementById('clear-btn');
+  const statCount = document.getElementById('stat-count');
+  const statBefore = document.getElementById('stat-before');
+  const statAfter = document.getElementById('stat-after');
+  const statSaved = document.getElementById('stat-saved');
+
+  let outputFormat = 'jpeg';
+  let items = []; // { id, file, name, thumbUrl, originalSize, blob, blobUrl, status }
+  let nextId = 1;
+
+  // --- Controls ---
+  qualityInput.addEventListener('input', () => qualityVal.textContent = qualityInput.value);
+  maxdimInput.addEventListener('input', () => maxdimVal.textContent = maxdimInput.value);
+
+  formatToggle.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      formatToggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      outputFormat = btn.dataset.fmt;
+    });
+  });
+
+  reprocessBtn.addEventListener('click', () => {
+    if (items.length === 0) return;
+    const filesToRedo = items.map(i => i.file);
+    items.forEach(i => { if (i.blobUrl) URL.revokeObjectURL(i.blobUrl); if (i.thumbUrl) URL.revokeObjectURL(i.thumbUrl); });
+    items = [];
+    filesEl.innerHTML = '';
+    addFiles(filesToRedo);
+  });
+
+  clearBtn.addEventListener('click', () => {
+    items.forEach(i => { if (i.blobUrl) URL.revokeObjectURL(i.blobUrl); if (i.thumbUrl) URL.revokeObjectURL(i.thumbUrl); });
+    items = [];
+    filesEl.innerHTML = '';
+    summaryEl.classList.add('hidden');
+    reprocessBtn.disabled = true;
+  });
+
+  // --- Drag and drop ---
+  dropEl.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (e) => addFiles(Array.from(e.target.files)));
+
+  ['dragenter', 'dragover'].forEach(evt => {
+    dropEl.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropEl.classList.add('drag');
+    });
+  });
+  ['dragleave', 'drop'].forEach(evt => {
+    dropEl.addEventListener(evt, (e) => {
+      e.preventDefault();
+      if (evt === 'dragleave' && dropEl.contains(e.relatedTarget)) return;
+      dropEl.classList.remove('drag');
+    });
+  });
+  dropEl.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const files = await getFilesFromDrop(e.dataTransfer);
+    addFiles(files);
+  });
+
+  // window-wide drag prevent
+  ['dragover', 'drop'].forEach(evt => {
+    window.addEventListener(evt, (e) => { if (e.target !== dropEl && !dropEl.contains(e.target)) e.preventDefault(); });
+  });
+
+  async function getFilesFromDrop(dt) {
+    const files = [];
+    if (dt.items) {
+      const entries = [];
+      for (const it of dt.items) {
+        if (it.kind === 'file') {
+          const entry = it.webkitGetAsEntry ? it.webkitGetAsEntry() : null;
+          if (entry) entries.push(entry);
+          else files.push(it.getAsFile());
+        }
+      }
+      for (const entry of entries) {
+        await walkEntry(entry, files);
+      }
+    } else {
+      for (const f of dt.files) files.push(f);
+    }
+    return files.filter(f => f && f.type.startsWith('image/'));
+  }
+
+  function walkEntry(entry, out) {
+    return new Promise((resolve) => {
+      if (entry.isFile) {
+        entry.file(f => { out.push(f); resolve(); });
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        reader.readEntries(async (entries) => {
+          for (const e of entries) await walkEntry(e, out);
+          resolve();
+        });
+      } else resolve();
+    });
+  }
+
+  // --- Add and process files ---
+  function addFiles(files) {
+    files = files.filter(f => f && (f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name)));
+    if (files.length === 0) return;
+
+    for (const f of files) {
+      const id = nextId++;
+      const item = {
+        id, file: f, name: f.name,
+        originalSize: f.size,
+        thumbUrl: null, blob: null, blobUrl: null,
+        outBytes: 0, status: 'queued'
+      };
+      items.push(item);
+      renderRow(item);
+    }
+    summaryEl.classList.remove('hidden');
+    reprocessBtn.disabled = false;
+    updateSummary();
+    processQueue();
+  }
+
+  async function processQueue() {
+    for (const item of items) {
+      if (item.status === 'queued') {
+        item.status = 'processing';
+        updateRow(item);
+        try {
+          await processItem(item);
+          item.status = 'done';
+        } catch (err) {
+          console.error(err);
+          item.status = 'error';
+          item.error = err.message || 'Failed';
+        }
+        updateRow(item);
+        updateSummary();
+      }
+    }
+  }
+
+  async function processItem(item) {
+    const quality = parseInt(qualityInput.value, 10) / 100;
+    const maxDim = parseInt(maxdimInput.value, 10);
+
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(item.file, { imageOrientation: 'from-image' });
+    } catch (e) {
+      // fallback for HEIC etc — try via Image element
+      bitmap = await loadViaImage(item.file);
+    }
+
+    let { width, height } = bitmap;
+    if (width > maxDim || height > maxDim) {
+      const scale = maxDim / Math.max(width, height);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+
+    // White background for JPEG (which has no alpha)
+    if (outputFormat === 'jpeg') {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+    }
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    if (bitmap.close) bitmap.close();
+
+    const mime = `image/${outputFormat}`;
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('Encode failed')), mime, quality);
+    });
+
+    item.blob = blob;
+    item.blobUrl = URL.createObjectURL(blob);
+    item.outBytes = blob.size;
+
+    // thumbnail
+    const thumbCanvas = document.createElement('canvas');
+    const ts = 128;
+    const tscale = Math.min(ts / width, ts / height, 1);
+    thumbCanvas.width = Math.round(width * tscale);
+    thumbCanvas.height = Math.round(height * tscale);
+    thumbCanvas.getContext('2d').drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
+    item.thumbUrl = thumbCanvas.toDataURL('image/jpeg', 0.7);
+
+    return item;
+  }
+
+  function loadViaImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read this image format')); };
+      img.src = url;
+    });
+  }
+
+  // --- Rendering ---
+  function renderRow(item) {
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.id = `row-${item.id}`;
+    row.innerHTML = `
+      <div class="thumb"><div style="font-size:10px;color:var(--ink-faint)">...</div></div>
+      <div class="info">
+        <div class="name">${escapeHtml(item.name)}</div>
+        <div class="stats"><span class="processing">processing...</span></div>
+      </div>
+      <div class="badge">queued</div>
+      <button class="btn-icon" title="Download" disabled>↓</button>
+    `;
+    filesEl.appendChild(row);
+  }
+
+  function updateRow(item) {
+    const row = document.getElementById(`row-${item.id}`);
+    if (!row) return;
+    const thumb = row.querySelector('.thumb');
+    const stats = row.querySelector('.stats');
+    const badge = row.querySelector('.badge');
+    const btn = row.querySelector('.btn-icon');
+
+    if (item.thumbUrl) {
+      thumb.innerHTML = `<img src="${item.thumbUrl}" alt="">`;
+    }
+
+    if (item.status === 'processing') {
+      stats.innerHTML = '<span class="processing">squishing...</span>';
+      badge.textContent = 'working';
+      badge.className = 'badge';
+    } else if (item.status === 'done') {
+      const savings = ((item.originalSize - item.outBytes) / item.originalSize * 100).toFixed(0);
+      stats.innerHTML = `${fmtBytes(item.originalSize)}<span class="arrow">→</span>${fmtBytes(item.outBytes)}<span class="savings">−${savings}%</span>`;
+      badge.textContent = 'done';
+      badge.className = 'badge done';
+      btn.disabled = false;
+      btn.onclick = () => downloadItem(item);
+    } else if (item.status === 'error') {
+      stats.innerHTML = `<span style="color:var(--accent)">${escapeHtml(item.error || 'failed')}</span>`;
+      badge.textContent = 'error';
+      badge.className = 'badge error';
+    }
+  }
+
+  function updateSummary() {
+    const done = items.filter(i => i.status === 'done');
+    statCount.textContent = `${done.length}/${items.length}`;
+    const before = items.reduce((s, i) => s + i.originalSize, 0);
+    const after = done.reduce((s, i) => s + i.outBytes, 0) + items.filter(i => i.status !== 'done').reduce((s, i) => s + i.originalSize, 0);
+    statBefore.textContent = fmtBytes(before);
+    statAfter.textContent = fmtBytes(after);
+    const savedPct = before > 0 ? Math.round((before - after) / before * 100) : 0;
+    statSaved.textContent = savedPct > 0 ? `−${savedPct}%` : '0%';
+    zipBtn.disabled = done.length === 0;
+  }
+
+  function downloadItem(item) {
+    const a = document.createElement('a');
+    a.href = item.blobUrl;
+    a.download = renameFile(item.name, outputFormat);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  zipBtn.addEventListener('click', async () => {
+    const done = items.filter(i => i.status === 'done');
+    if (done.length === 0) return;
+    zipBtn.disabled = true;
+    const original = zipBtn.textContent;
+    zipBtn.textContent = 'Zipping...';
+    try {
+      const zip = new JSZip();
+      for (const item of done) {
+        zip.file(renameFile(item.name, outputFormat), item.blob);
+      }
+      const content = await zip.generateAsync({ type: 'blob' }, (m) => {
+        zipBtn.textContent = `Zipping ${Math.round(m.percent)}%`;
+      });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `squished-${stamp()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } finally {
+      zipBtn.textContent = original;
+      zipBtn.disabled = false;
+    }
+  });
+
+  // --- Helpers ---
+  function fmtBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(0) + ' KB';
+    return (b / 1024 / 1024).toFixed(2) + ' MB';
+  }
+
+  function renameFile(name, fmt) {
+    const ext = fmt === 'jpeg' ? 'jpg' : fmt;
+    return name.replace(/\.[^.]+$/, '') + '.' + ext;
+  }
+
+  function stamp() {
+    const d = new Date();
+    return d.getFullYear() + ('0'+(d.getMonth()+1)).slice(-2) + ('0'+d.getDate()).slice(-2);
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+</script>
+
+</body>
+</html>

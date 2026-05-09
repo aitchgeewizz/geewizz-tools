@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geewizz Tools</title>
+<meta name="description" content="A small set of single-purpose tools for everyday workflow snags. Open source, no sign-up, runs in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/tokens.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  body {
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(72, 102, 171, 0.05) 0%, transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(72, 102, 171, 0.04) 0%, transparent 40%);
+    background-attachment: fixed;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.4;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.1 0 0 0 0 0.1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    z-index: 0;
+  }
+
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 48px 32px 80px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  header {
+    margin-bottom: 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 28px;
+    gap: 32px;
+  }
+
+  .brand h1 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-stretch: 80%;
+    font-size: 76px;
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    font-optical-sizing: auto;
+    display: inline-block;
+    animation: squishIntro 1.6s var(--ease-overshoot);
+    transition: font-weight 0.55s var(--ease-smooth),
+                font-stretch 0.55s var(--ease-smooth);
+    cursor: default;
+  }
+
+  .brand h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .brand h1:hover {
+    font-weight: 750;
+    font-stretch: 100%;
+  }
+
+  @keyframes squishIntro {
+    0%   { font-weight: 200; font-stretch: 75%; }
+    55%  { font-weight: 800; font-stretch: 100%; }
+    100% { font-weight: 400; font-stretch: 80%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .brand h1 { animation: none; transition: none; }
+    .brand h1:hover { font-weight: 400; font-stretch: 80%; }
+    .tool-card .name { animation: none; transition: none; }
+    .tool-card:hover .name { font-weight: 500; font-stretch: 100%; }
+  }
+
+  .brand p {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    margin-top: 12px;
+    max-width: 520px;
+  }
+
+  .meta {
+    text-align: right;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-faint);
+    line-height: 1.7;
+    flex-shrink: 0;
+  }
+
+  .meta a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .meta a:hover { text-decoration: underline; }
+
+  /* Tools grid */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .tool-card {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    padding: 24px 22px 22px;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: transform 0.2s var(--ease-smooth),
+                border-color 0.2s var(--ease-smooth),
+                background 0.2s var(--ease-smooth),
+                box-shadow 0.2s var(--ease-smooth);
+    position: relative;
+    min-height: 200px;
+  }
+
+  .tool-card.live { cursor: pointer; }
+
+  .tool-card.live:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    box-shadow: 0 6px 20px rgba(72, 102, 171, 0.08);
+  }
+
+  .tool-card.soon {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .tool-icon {
+    color: var(--accent);
+    line-height: 0;
+    margin-bottom: 4px;
+  }
+  .tool-icon svg {
+    width: 28px;
+    height: 28px;
+    display: block;
+  }
+
+  .tool-card .name {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-stretch: 80%;
+    font-size: 30px;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    font-optical-sizing: auto;
+    color: var(--ink);
+    transition: font-weight 0.4s var(--ease-smooth),
+                font-stretch 0.4s var(--ease-smooth);
+  }
+
+  .tool-card.live:hover .name {
+    font-weight: 700;
+    font-stretch: 100%;
+  }
+
+  .tool-card .description {
+    font-size: 13px;
+    color: var(--ink-soft);
+    line-height: 1.55;
+    flex: 1;
+  }
+
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .tag {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 3px 8px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    font-weight: 700;
+  }
+
+  .tag.soon {
+    background: var(--ink);
+    color: var(--bg-card);
+    border-color: var(--ink);
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 56px;
+    padding-top: 28px;
+    border-top: 1px solid var(--line);
+    text-align: center;
+    font-size: 13px;
+    color: var(--ink-soft);
+    line-height: 1.7;
+  }
+
+  footer em { font-style: normal; color: var(--ink); font-weight: 500; }
+
+  footer a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 700;
+  }
+  footer a:hover { text-decoration: underline; }
+
+  footer p + p { margin-top: 4px; }
+
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 32px 20px; }
+    .brand h1 { font-size: 52px; }
+    header { flex-direction: column; align-items: flex-start; gap: 16px; }
+    .meta { text-align: left; }
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>Geewizz Tools<em>.</em></h1>
+      <p>A small set of single-purpose tools for everyday workflow snags. Open source, no sign-up, runs in your browser.</p>
+    </div>
+    <div class="meta">
+      <div>v0.1</div>
+      <div>by <a href="https://geewizz.com.au">HG</a></div>
+    </div>
+  </header>
+
+  <div class="grid" id="grid"></div>
+
+  <footer>
+    <p><em>Everything happens locally in your browser.</em> No tracking, no uploads, no accounts.</p>
+    <p>Open source on <a href="https://github.com/hannahgibson/geewizz-tools">GitHub</a>. Fork it, host it yourself, send a pull request.</p>
+  </footer>
+</div>
+
+<script>
+  // Single-stroke SVG icons matching the Squish drop-arrow style
+  const ICON = {
+    squish: `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8 L10 12 L6 12 Z" fill="currentColor"/><path d="M26 8 L22 12 L26 12 Z" fill="currentColor"/><path d="M6 24 L10 20 L6 20 Z" fill="currentColor"/><path d="M26 24 L22 20 L26 20 Z" fill="currentColor"/><line x1="11" y1="16" x2="21" y2="16"/></svg>`,
+    frame: `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="14"/><rect x="9" y="6" width="16" height="14"/><circle cx="13" cy="13" r="1.5" fill="currentColor"/></svg>`,
+    swap: `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 11 L24 11"/><path d="M20 7 L24 11 L20 15"/><path d="M26 21 L8 21"/><path d="M12 17 L8 21 L12 25"/></svg>`,
+    voice: `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="16" x2="6" y2="16"/><line x1="11" y1="12" x2="11" y2="20"/><line x1="16" y1="8" x2="16" y2="24"/><line x1="21" y1="13" x2="21" y2="19"/><line x1="26" y1="15" x2="26" y2="17"/></svg>`
+  };
+
+  const TOOLS = [
+    {
+      name: "Squish",
+      href: "/tools/squish",
+      description: "Drag images in, get small ones out. Compress before emailing or uploading.",
+      tags: ["image", "local-only"],
+      icon: ICON.squish,
+      status: "live"
+    },
+    {
+      name: "Frame",
+      href: "/tools/frame",
+      description: "Drop images, get an animated GIF or MP4. Looping, timing, all the controls.",
+      tags: ["image", "video", "local-only"],
+      icon: ICON.frame,
+      status: "soon"
+    },
+    {
+      name: "Swap",
+      href: "/tools/swap",
+      description: "Quick face or object swap in a video clip. Mask the bit, replace it, done.",
+      tags: ["video", "local-only"],
+      icon: ICON.swap,
+      status: "soon"
+    },
+    {
+      name: "Voice",
+      href: "/tools/voice",
+      description: "Rewrite anything in your own brand voice. Bring your own Anthropic key, it stays in your browser.",
+      tags: ["text", "byok"],
+      icon: ICON.voice,
+      status: "soon"
+    }
+  ];
+
+  const grid = document.getElementById('grid');
+
+  TOOLS.forEach(tool => {
+    const el = document.createElement(tool.status === 'live' ? 'a' : 'div');
+    el.className = `tool-card ${tool.status}`;
+    if (tool.status === 'live') el.href = tool.href;
+
+    const tags = [...tool.tags];
+    if (tool.status === 'soon') tags.push('soon');
+
+    el.innerHTML = `
+      <div class="tool-icon">${tool.icon}</div>
+      <div class="name">${tool.name}</div>
+      <div class="description">${tool.description}</div>
+      <div class="tags">
+        ${tags.map(t => `<span class="tag${t === 'soon' ? ' soon' : ''}">${t}</span>`).join('')}
+      </div>
+    `;
+
+    grid.appendChild(el);
+  });
+</script>
+
+</body>
+</html>

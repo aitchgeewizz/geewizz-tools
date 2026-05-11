@@ -122,6 +122,12 @@
   }
 
   .meta span { color: var(--accent); font-weight: 700; }
+  .meta a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .meta a:hover { text-decoration: underline; }
 
   /* Controls */
   .controls {
@@ -188,7 +194,7 @@
   }
 
   .format-toggle {
-    display: flex;
+    display: inline-flex;
     border: 1px solid var(--line);
     background: var(--bg);
   }
@@ -450,6 +456,7 @@
       <p>Drag images in, get small ones out. No uploads, no sign-ups, all happens right here in your browser.</p>
     </div>
     <div class="meta">
+      <div><a href="/">← all tools</a></div>
       <div>v1.0</div>
       <div>by <span>HG</span></div>
     </div>

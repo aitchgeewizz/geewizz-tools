@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reel — quick looping GIFs from a set of images</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<style>
+  :root {
+    --bg: #f4efe6;
+    --bg-card: #fbf8f1;
+    --ink: #1a1816;
+    --ink-soft: #5a544c;
+    --ink-faint: #9c948a;
+    --line: #d8cfbe;
+    --accent: #4866ab;
+    --accent-soft: #dbe2ef;
+    --accent-light: #8aa0e0;
+    --good: #2dd4bf;
+    --good-deep: #0a6e63;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  body {
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(72, 102, 171, 0.05) 0%, transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(72, 102, 171, 0.04) 0%, transparent 40%);
+    background-attachment: fixed;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.4;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.1 0 0 0 0 0.1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    z-index: 0;
+  }
+
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 48px 32px 80px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  header {
+    margin-bottom: 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 24px;
+  }
+
+  .brand h1 {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-weight: 400;
+    font-stretch: 80%;
+    font-size: 76px;
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    font-optical-sizing: auto;
+    display: inline-block;
+    animation: squishIntro 1.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: font-weight 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+                font-stretch 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: default;
+  }
+
+  .brand h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .brand h1:hover {
+    font-weight: 750;
+    font-stretch: 100%;
+  }
+
+  @keyframes squishIntro {
+    0%   { font-weight: 200; font-stretch: 75%; }
+    55%  { font-weight: 800; font-stretch: 100%; }
+    100% { font-weight: 400; font-stretch: 80%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .brand h1 { animation: none; transition: none; }
+    .brand h1:hover { font-weight: 400; font-stretch: 80%; }
+  }
+
+  .brand p {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    margin-top: 12px;
+    max-width: 480px;
+  }
+
+  .meta {
+    text-align: right;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-faint);
+  }
+
+  .meta span { color: var(--accent); font-weight: 700; }
+  .meta a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .meta a:hover { text-decoration: underline; }
+
+  /* Controls */
+  .controls {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    gap: 24px 28px;
+    align-items: start;
+  }
+
+  .controls-row2 {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 24px 28px;
+    align-items: end;
+    padding-top: 4px;
+    border-top: 1px dashed var(--line);
+    margin-top: 4px;
+    padding-top: 20px;
+  }
+
+  .control label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    margin-bottom: 8px;
+    font-weight: 700;
+  }
+
+  .seg {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    flex-wrap: nowrap;
+  }
+
+  .seg button {
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    font-family: inherit;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    color: var(--ink-soft);
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .seg button.active {
+    background: var(--ink);
+    color: var(--bg-card);
+  }
+  .seg button:hover:not(.active) { color: var(--ink); }
+
+  .seg.disabled { opacity: 0.4; pointer-events: none; }
+
+  .custom-aspect {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+  .custom-aspect.show { display: flex; }
+  .custom-aspect input {
+    width: 56px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .custom-aspect input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+  .swatches { display: inline-flex; gap: 6px; }
+  .swatch {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--line);
+    cursor: pointer;
+    transition: transform 0.12s, border-color 0.12s;
+    padding: 0;
+  }
+  .swatch:hover { transform: scale(1.1); }
+  .swatch.active { border-color: var(--accent); border-width: 2px; }
+  .swatch.cream { background: var(--bg); }
+  .swatch.white { background: #ffffff; }
+  .swatch.black { background: var(--ink); }
+
+  input[type="range"] {
+    width: 100%;
+    margin-top: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--line);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    background: var(--accent);
+    cursor: pointer;
+    border-radius: 50%;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px;
+    background: var(--accent);
+    cursor: pointer;
+    border-radius: 50%;
+    border: none;
+  }
+
+  .control .value {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 22px;
+    font-weight: 500;
+    font-stretch: 100%;
+    font-optical-sizing: auto;
+    line-height: 1;
+    color: var(--ink);
+  }
+  .control .value span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-left: 4px;
+  }
+
+  /* Drop zone */
+  .drop {
+    border: 2px dashed var(--line);
+    background: var(--bg-card);
+    padding: 60px 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 24px;
+  }
+  .drop.compact { padding: 28px 40px; }
+  .drop:hover, .drop.drag {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .drop.drag { transform: scale(1.005); }
+
+  .drop-icon {
+    color: var(--accent);
+    line-height: 0;
+    margin-bottom: 4px;
+    display: inline-block;
+  }
+  .drop-icon svg { width: 48px; height: 48px; display: block; }
+  .drop.compact .drop-icon svg { width: 28px; height: 28px; }
+
+  .drop h2 {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-weight: 500;
+    font-stretch: 100%;
+    font-optical-sizing: auto;
+    font-size: 28px;
+    margin: 12px 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .drop.compact h2 { font-size: 18px; margin: 6px 0 4px; }
+
+  .drop p {
+    color: var(--ink-soft);
+    font-size: 13px;
+  }
+  .drop.compact p { font-size: 12px; }
+
+  #file-input { display: none; }
+
+  /* Preview panel */
+  .preview-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    padding: 24px;
+    margin-bottom: 24px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 32px;
+    align-items: center;
+  }
+
+  .preview-canvas-wrap {
+    background: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 240px;
+    max-height: 420px;
+    overflow: hidden;
+  }
+  #preview-canvas {
+    display: block;
+    max-width: 100%;
+    max-height: 420px;
+    image-rendering: -webkit-optimize-contrast;
+  }
+
+  .preview-meta {
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .meta-block .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    margin-bottom: 4px;
+    font-weight: 700;
+  }
+  .meta-block .value {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 24px;
+    font-weight: 500;
+    font-stretch: 100%;
+    font-optical-sizing: auto;
+    line-height: 1;
+    color: var(--ink);
+  }
+  .meta-block .value span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-left: 4px;
+  }
+
+  .warning {
+    background: var(--accent-soft);
+    color: var(--ink);
+    padding: 10px 14px;
+    border-left: 3px solid var(--accent);
+    font-size: 12px;
+    margin-bottom: 24px;
+  }
+  .warning.hidden { display: none; }
+
+  /* Frames grid */
+  .frames-section {
+    margin-bottom: 24px;
+  }
+  .frames-section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    font-weight: 700;
+  }
+  .frames-section-head .hint {
+    color: var(--ink-faint);
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+    font-size: 11px;
+  }
+
+  .frames-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 8px;
+  }
+
+  .frame-tile {
+    position: relative;
+    aspect-ratio: 1;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    overflow: hidden;
+    cursor: grab;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .frame-tile:hover {
+    border-color: var(--accent);
+  }
+  .frame-tile.sortable-ghost { opacity: 0.4; }
+  .frame-tile.sortable-chosen { cursor: grabbing; }
+
+  .frame-tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    pointer-events: none;
+  }
+
+  .frame-tile .frame-index {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    background: var(--ink);
+    color: var(--bg-card);
+    font-size: 10px;
+    padding: 2px 6px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+
+  .frame-tile .frame-remove {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 22px;
+    height: 22px;
+    background: var(--ink);
+    color: var(--bg-card);
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-family: inherit;
+  }
+  .frame-tile:hover .frame-remove { display: flex; }
+  .frame-tile .frame-remove:hover { background: var(--accent); }
+
+  /* Summary bar */
+  .summary {
+    background: var(--ink);
+    color: var(--bg-card);
+    padding: 22px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .summary-stats {
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+
+  .summary-stat .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    margin-bottom: 6px;
+  }
+  .summary-stat .value {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 22px;
+    font-weight: 500;
+    font-stretch: 100%;
+    font-optical-sizing: auto;
+    line-height: 1;
+    letter-spacing: -0.01em;
+  }
+  .summary-stat .value.accent { color: var(--accent-light); }
+
+  .actions { display: flex; gap: 8px; }
+
+  .btn {
+    padding: 12px 20px;
+    background: var(--accent);
+    color: var(--bg-card);
+    border: 1px solid var(--accent);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn:hover { background: transparent; color: var(--accent); }
+  .btn.ghost {
+    background: transparent;
+    color: var(--bg-card);
+    border-color: var(--ink-faint);
+  }
+  .btn.ghost:hover { border-color: var(--bg-card); color: var(--bg-card); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  footer {
+    margin-top: 48px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--ink-soft);
+    line-height: 1.7;
+  }
+  footer em { font-style: normal; }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 860px) {
+    .controls { grid-template-columns: 1fr 1fr; }
+    .controls-row2 { grid-template-columns: 1fr 1fr; }
+    .preview-panel { grid-template-columns: 1fr; gap: 20px; }
+  }
+
+  @media (max-width: 600px) {
+    .wrap { padding: 32px 20px; }
+    .brand h1 { font-size: 52px; }
+    header { flex-direction: column; align-items: flex-start; gap: 16px; }
+    .meta { text-align: left; }
+    .controls, .controls-row2 { grid-template-columns: 1fr; }
+    .summary { flex-direction: column; gap: 20px; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>Reel<em>.</em></h1>
+      <p>Drop images, get a looping GIF. Pick the size, the pace, hit download. Nothing leaves your browser.</p>
+    </div>
+    <div class="meta">
+      <div><a href="/">← all tools</a></div>
+      <div>v1.0</div>
+      <div>by <span>HG</span></div>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="control">
+      <label>Aspect ratio</label>
+      <div class="seg" id="aspect-seg">
+        <button data-val="1:1" class="active">1:1</button>
+        <button data-val="16:9">16:9</button>
+        <button data-val="9:16">9:16</button>
+        <button data-val="3:4">3:4</button>
+        <button data-val="custom">Custom</button>
+      </div>
+      <div class="custom-aspect" id="custom-aspect">
+        <input type="number" id="custom-w" min="1" max="100" value="4">
+        <span>:</span>
+        <input type="number" id="custom-h" min="1" max="100" value="5">
+      </div>
+    </div>
+    <div class="control">
+      <label>Fit</label>
+      <div class="seg" id="fit-seg">
+        <button data-val="cover" class="active">Cover</button>
+        <button data-val="contain">Contain</button>
+      </div>
+    </div>
+    <div class="control" id="bg-control">
+      <label>Background</label>
+      <div class="swatches" id="bg-swatches">
+        <button class="swatch cream active" data-val="cream" title="Cream"></button>
+        <button class="swatch white" data-val="white" title="White"></button>
+        <button class="swatch black" data-val="black" title="Black"></button>
+      </div>
+    </div>
+
+    <div class="controls-row2">
+      <div class="control">
+        <label for="duration">Frame duration</label>
+        <div class="value"><span id="duration-val">0.50</span><span>s</span></div>
+        <input type="range" id="duration" min="0.1" max="2.0" step="0.05" value="0.5">
+      </div>
+      <div class="control">
+        <label>Size</label>
+        <div class="seg" id="size-seg">
+          <button data-val="small">Small</button>
+          <button data-val="medium" class="active">Medium</button>
+          <button data-val="large">Large</button>
+        </div>
+      </div>
+      <div class="control">
+        <label>Quality</label>
+        <div class="seg" id="quality-seg">
+          <button data-val="punchy">Punchy</button>
+          <button data-val="balanced" class="active">Balanced</button>
+          <button data-val="pristine">Pristine</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="drop" id="drop">
+    <div class="drop-icon">
+      <svg viewBox="0 0 32 56" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="16" y1="6" x2="16" y2="48"/>
+        <path d="M5 38 L16 50 L27 38"/>
+      </svg>
+    </div>
+    <h2 id="drop-h">Drop your images here</h2>
+    <p id="drop-p">Or <strong>click anywhere</strong> in this box. Order matters, drag to rearrange afterwards. JPEG, PNG, WebP, HEIC.</p>
+    <input type="file" id="file-input" multiple accept="image/*">
+  </div>
+
+  <div class="warning hidden" id="warning"></div>
+
+  <div class="preview-panel hidden" id="preview-panel">
+    <div class="preview-canvas-wrap">
+      <canvas id="preview-canvas" width="540" height="540"></canvas>
+    </div>
+    <div class="preview-meta">
+      <div class="meta-block">
+        <div class="label">Showing</div>
+        <div class="value"><span id="meta-frame">0</span><span>/</span><span id="meta-total">0</span></div>
+      </div>
+      <div class="meta-block">
+        <div class="label">Estimated size</div>
+        <div class="value"><span id="meta-size">0</span><span id="meta-size-unit">KB</span></div>
+      </div>
+      <div class="meta-block">
+        <div class="label">Loop length</div>
+        <div class="value"><span id="meta-loop">0.0</span><span>s</span></div>
+      </div>
+      <div class="meta-block">
+        <div class="label">Dimensions</div>
+        <div class="value"><span id="meta-dims">540×540</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frames-section hidden" id="frames-section">
+    <div class="frames-section-head">
+      <span>Frames</span>
+      <span class="hint">drag to reorder, hover to remove</span>
+    </div>
+    <div class="frames-grid" id="frames-grid"></div>
+  </div>
+
+  <div class="summary hidden" id="summary">
+    <div class="summary-stats">
+      <div class="summary-stat">
+        <div class="label">Frames</div>
+        <div class="value" id="stat-frames">0</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Loop</div>
+        <div class="value" id="stat-loop">0.0s</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Est. size</div>
+        <div class="value accent" id="stat-size">0 KB</div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" id="clear-btn">Clear</button>
+      <button class="btn" id="download-btn" disabled>Download .gif</button>
+    </div>
+  </div>
+
+  <footer>
+    <p><em>Everything happens in your browser.</em> Your images don't go anywhere.</p>
+    <p>Save this file anywhere. Bookmark it. Open it offline. It just works.</p>
+  </footer>
+</div>
+
+<script type="module">
+import { GIFEncoder, quantize, applyPalette } from 'https://esm.sh/gifenc@1.0.3';
+
+// ---------- State ----------
+const state = {
+  frames: [],
+  aspect: '1:1',
+  customAspect: { w: 4, h: 5 },
+  fit: 'cover',
+  bg: 'cream',
+  size: 'medium',
+  quality: 'balanced',
+  duration: 500,
+  previewIdx: 0,
+  previewLastSwitch: 0,
+  encoding: false,
+};
+
+const SIZE_MAP = { small: 320, medium: 540, large: 720 };
+const QUALITY_MAP = {
+  punchy:    { palette: 32,  bppEst: 5 },
+  balanced:  { palette: 128, bppEst: 6 },
+  pristine:  { palette: 256, bppEst: 7 },
+};
+const BG_MAP = { cream: '#f4efe6', white: '#ffffff', black: '#1a1816' };
+
+let nextId = 1;
+
+// ---------- DOM ----------
+const els = {
+  drop: document.getElementById('drop'),
+  dropH: document.getElementById('drop-h'),
+  dropP: document.getElementById('drop-p'),
+  fileInput: document.getElementById('file-input'),
+  aspectSeg: document.getElementById('aspect-seg'),
+  customAspect: document.getElementById('custom-aspect'),
+  customW: document.getElementById('custom-w'),
+  customH: document.getElementById('custom-h'),
+  fitSeg: document.getElementById('fit-seg'),
+  bgControl: document.getElementById('bg-control'),
+  bgSwatches: document.getElementById('bg-swatches'),
+  sizeSeg: document.getElementById('size-seg'),
+  qualitySeg: document.getElementById('quality-seg'),
+  duration: document.getElementById('duration'),
+  durationVal: document.getElementById('duration-val'),
+  warning: document.getElementById('warning'),
+  previewPanel: document.getElementById('preview-panel'),
+  previewCanvas: document.getElementById('preview-canvas'),
+  metaFrame: document.getElementById('meta-frame'),
+  metaTotal: document.getElementById('meta-total'),
+  metaSize: document.getElementById('meta-size'),
+  metaSizeUnit: document.getElementById('meta-size-unit'),
+  metaLoop: document.getElementById('meta-loop'),
+  metaDims: document.getElementById('meta-dims'),
+  framesSection: document.getElementById('frames-section'),
+  framesGrid: document.getElementById('frames-grid'),
+  summary: document.getElementById('summary'),
+  statFrames: document.getElementById('stat-frames'),
+  statLoop: document.getElementById('stat-loop'),
+  statSize: document.getElementById('stat-size'),
+  clearBtn: document.getElementById('clear-btn'),
+  downloadBtn: document.getElementById('download-btn'),
+};
+
+// ---------- Segmented button wiring ----------
+function wireSeg(el, onChange) {
+  el.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    el.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    onChange(btn.dataset.val);
+  });
+}
+
+wireSeg(els.aspectSeg, (v) => {
+  state.aspect = v;
+  els.customAspect.classList.toggle('show', v === 'custom');
+  reflowFrames();
+});
+wireSeg(els.fitSeg, (v) => {
+  state.fit = v;
+  els.bgControl.querySelector('.swatches').classList.toggle('disabled', v === 'cover');
+  reflowFrames();
+});
+wireSeg(els.sizeSeg, (v) => {
+  state.size = v;
+  reflowFrames();
+});
+wireSeg(els.qualitySeg, (v) => {
+  state.quality = v;
+  updateEstimate();
+});
+
+els.bgSwatches.addEventListener('click', (e) => {
+  const btn = e.target.closest('.swatch');
+  if (!btn) return;
+  els.bgSwatches.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+  btn.classList.add('active');
+  state.bg = btn.dataset.val;
+  if (state.fit === 'contain') reflowFrames();
+});
+
+els.customW.addEventListener('input', () => {
+  const v = clampInt(els.customW.value, 1, 100, 4);
+  state.customAspect.w = v;
+  if (state.aspect === 'custom') reflowFrames();
+});
+els.customH.addEventListener('input', () => {
+  const v = clampInt(els.customH.value, 1, 100, 5);
+  state.customAspect.h = v;
+  if (state.aspect === 'custom') reflowFrames();
+});
+
+els.duration.addEventListener('input', () => {
+  const s = parseFloat(els.duration.value);
+  state.duration = Math.round(s * 1000);
+  els.durationVal.textContent = s.toFixed(2);
+  updateSummary();
+  updateEstimate();
+});
+
+// Initial state: cover so background is dimmed
+els.bgControl.querySelector('.swatches').classList.add('disabled');
+
+// ---------- Drop and file input ----------
+els.drop.addEventListener('click', () => els.fileInput.click());
+els.fileInput.addEventListener('change', (e) => {
+  addFiles(Array.from(e.target.files));
+  e.target.value = '';
+});
+
+['dragenter', 'dragover'].forEach(evt => {
+  els.drop.addEventListener(evt, (e) => {
+    e.preventDefault();
+    els.drop.classList.add('drag');
+  });
+});
+['dragleave', 'drop'].forEach(evt => {
+  els.drop.addEventListener(evt, (e) => {
+    e.preventDefault();
+    if (evt === 'dragleave' && els.drop.contains(e.relatedTarget)) return;
+    els.drop.classList.remove('drag');
+  });
+});
+els.drop.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  const files = await getFilesFromDrop(e.dataTransfer);
+  addFiles(files);
+});
+
+['dragover', 'drop'].forEach(evt => {
+  window.addEventListener(evt, (e) => {
+    if (e.target !== els.drop && !els.drop.contains(e.target)) e.preventDefault();
+  });
+});
+
+async function getFilesFromDrop(dt) {
+  const files = [];
+  if (dt.items) {
+    const entries = [];
+    for (const it of dt.items) {
+      if (it.kind === 'file') {
+        const entry = it.webkitGetAsEntry ? it.webkitGetAsEntry() : null;
+        if (entry) entries.push(entry);
+        else files.push(it.getAsFile());
+      }
+    }
+    for (const entry of entries) await walkEntry(entry, files);
+  } else {
+    for (const f of dt.files) files.push(f);
+  }
+  return files.filter(f => f && (f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name)));
+}
+
+function walkEntry(entry, out) {
+  return new Promise((resolve) => {
+    if (entry.isFile) entry.file(f => { out.push(f); resolve(); });
+    else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      reader.readEntries(async (entries) => {
+        for (const e of entries) await walkEntry(e, out);
+        resolve();
+      });
+    } else resolve();
+  });
+}
+
+// ---------- Adding frames ----------
+async function addFiles(files) {
+  files = files.filter(f => f && (f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name)));
+  if (files.length === 0) return;
+
+  // Sort by name so dropping a folder preserves alphabetical order
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+  showSections();
+  els.drop.classList.add('compact');
+  els.dropH.textContent = 'Drop more in';
+  els.dropP.innerHTML = 'Or click here to add more. Drag tiles below to reorder.';
+
+  for (const file of files) {
+    const id = nextId++;
+    const frame = { id, file, name: file.name, bitmap: null, renderedCanvas: null, thumbUrl: null };
+    state.frames.push(frame);
+    addFrameTile(frame);
+  }
+
+  // Decode all newly added bitmaps in parallel
+  await Promise.all(state.frames.filter(f => !f.bitmap).map(decodeFrame));
+
+  reflowFrames();
+  updateSummary();
+}
+
+async function decodeFrame(frame) {
+  try {
+    frame.bitmap = await createImageBitmap(frame.file, { imageOrientation: 'from-image' });
+  } catch {
+    frame.bitmap = await loadViaImage(frame.file);
+  }
+}
+
+function loadViaImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image')); };
+    img.src = url;
+  });
+}
+
+// ---------- Frame tiles ----------
+function addFrameTile(frame) {
+  const tile = document.createElement('div');
+  tile.className = 'frame-tile';
+  tile.dataset.id = frame.id;
+  tile.innerHTML = `
+    <div class="frame-index"></div>
+    <button class="frame-remove" title="Remove">×</button>
+  `;
+  tile.querySelector('.frame-remove').addEventListener('click', (e) => {
+    e.stopPropagation();
+    removeFrame(frame.id);
+  });
+  els.framesGrid.appendChild(tile);
+  updateTileIndices();
+}
+
+function removeFrame(id) {
+  const idx = state.frames.findIndex(f => f.id === id);
+  if (idx < 0) return;
+  state.frames.splice(idx, 1);
+  const tile = els.framesGrid.querySelector(`[data-id="${id}"]`);
+  if (tile) tile.remove();
+  updateTileIndices();
+  if (state.frames.length === 0) {
+    hideSections();
+  } else {
+    updateSummary();
+  }
+  if (state.previewIdx >= state.frames.length) state.previewIdx = 0;
+  drawPreview();
+}
+
+function updateTileIndices() {
+  els.framesGrid.querySelectorAll('.frame-tile').forEach((tile, i) => {
+    tile.querySelector('.frame-index').textContent = String(i + 1).padStart(2, '0');
+  });
+}
+
+// ---------- Sortable ----------
+new Sortable(els.framesGrid, {
+  animation: 150,
+  ghostClass: 'sortable-ghost',
+  chosenClass: 'sortable-chosen',
+  onEnd: (evt) => {
+    const [moved] = state.frames.splice(evt.oldIndex, 1);
+    state.frames.splice(evt.newIndex, 0, moved);
+    updateTileIndices();
+    state.previewIdx = 0;
+    drawPreview();
+  }
+});
+
+// ---------- Canvas dimensions ----------
+function getCanvasDims() {
+  let aw, ah;
+  if (state.aspect === 'custom') {
+    aw = state.customAspect.w;
+    ah = state.customAspect.h;
+  } else {
+    [aw, ah] = state.aspect.split(':').map(Number);
+  }
+  const longest = SIZE_MAP[state.size];
+  let w, h;
+  if (aw >= ah) {
+    w = longest;
+    h = Math.round(longest * ah / aw);
+  } else {
+    h = longest;
+    w = Math.round(longest * aw / ah);
+  }
+  // Keep even dims (some encoders are picky, harmless for GIF)
+  w = Math.max(2, w - (w % 2));
+  h = Math.max(2, h - (h % 2));
+  return { w, h };
+}
+
+// ---------- Render all frames to their target canvas dims ----------
+function reflowFrames() {
+  const { w, h } = getCanvasDims();
+  for (const frame of state.frames) {
+    if (!frame.bitmap) continue;
+    frame.renderedCanvas = renderToCanvas(frame.bitmap, w, h);
+    updateTileThumb(frame);
+  }
+  els.previewCanvas.width = w;
+  els.previewCanvas.height = h;
+  els.metaDims.textContent = `${w}×${h}`;
+  drawPreview();
+  updateEstimate();
+  updateWarning();
+}
+
+function renderToCanvas(bitmap, w, h) {
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (state.fit === 'contain') {
+    ctx.fillStyle = BG_MAP[state.bg];
+    ctx.fillRect(0, 0, w, h);
+    drawContain(ctx, bitmap, w, h);
+  } else {
+    drawCover(ctx, bitmap, w, h);
+  }
+  return canvas;
+}
+
+function drawCover(ctx, img, cw, ch) {
+  const iw = img.width || img.naturalWidth;
+  const ih = img.height || img.naturalHeight;
+  const scale = Math.max(cw / iw, ch / ih);
+  const w = iw * scale, h = ih * scale;
+  const x = (cw - w) / 2, y = (ch - h) / 2;
+  ctx.drawImage(img, x, y, w, h);
+}
+
+function drawContain(ctx, img, cw, ch) {
+  const iw = img.width || img.naturalWidth;
+  const ih = img.height || img.naturalHeight;
+  const scale = Math.min(cw / iw, ch / ih);
+  const w = iw * scale, h = ih * scale;
+  const x = (cw - w) / 2, y = (ch - h) / 2;
+  ctx.drawImage(img, x, y, w, h);
+}
+
+function updateTileThumb(frame) {
+  const tile = els.framesGrid.querySelector(`[data-id="${frame.id}"]`);
+  if (!tile || !frame.renderedCanvas) return;
+  let img = tile.querySelector('img');
+  const url = frame.renderedCanvas.toDataURL('image/jpeg', 0.7);
+  if (!img) {
+    img = document.createElement('img');
+    tile.insertBefore(img, tile.firstChild);
+  }
+  img.src = url;
+}
+
+// ---------- Preview animation ----------
+function drawPreview() {
+  if (state.frames.length === 0) return;
+  const frame = state.frames[state.previewIdx];
+  if (!frame || !frame.renderedCanvas) return;
+  const ctx = els.previewCanvas.getContext('2d');
+  ctx.clearRect(0, 0, els.previewCanvas.width, els.previewCanvas.height);
+  ctx.drawImage(frame.renderedCanvas, 0, 0);
+  els.metaFrame.textContent = String(state.previewIdx + 1).padStart(2, '0');
+  els.metaTotal.textContent = String(state.frames.length).padStart(2, '0');
+}
+
+function previewTick(t) {
+  if (state.frames.length > 0) {
+    if (!state.previewLastSwitch) state.previewLastSwitch = t;
+    if (t - state.previewLastSwitch >= state.duration) {
+      state.previewIdx = (state.previewIdx + 1) % state.frames.length;
+      state.previewLastSwitch = t;
+      drawPreview();
+    }
+  } else {
+    state.previewLastSwitch = 0;
+  }
+  requestAnimationFrame(previewTick);
+}
+requestAnimationFrame(previewTick);
+
+// ---------- Estimate and summary ----------
+function updateEstimate() {
+  if (state.frames.length === 0) {
+    setEstimate(0);
+    return;
+  }
+  const { w, h } = getCanvasDims();
+  const q = QUALITY_MAP[state.quality];
+  // Rough heuristic: GIF size ≈ frames * pixels * bytesPerPixel * compressionFactor
+  // bytesPerPixel ≈ bppEst/8, compressionFactor ≈ 0.6 (typical LZW on indexed)
+  const bpp = q.bppEst / 8;
+  const bytes = state.frames.length * w * h * bpp * 0.6;
+  setEstimate(bytes);
+}
+
+function setEstimate(bytes) {
+  const [n, unit] = formatBytes(bytes);
+  els.metaSize.textContent = n;
+  els.metaSizeUnit.textContent = unit;
+  els.statSize.textContent = `${n} ${unit}`;
+}
+
+function updateSummary() {
+  els.statFrames.textContent = String(state.frames.length).padStart(2, '0');
+  const loopSec = (state.frames.length * state.duration / 1000);
+  els.statLoop.textContent = `${loopSec.toFixed(1)}s`;
+  els.metaLoop.textContent = loopSec.toFixed(1);
+  els.downloadBtn.disabled = state.frames.length === 0 || state.encoding;
+}
+
+function updateWarning() {
+  if (state.frames.length > 60) {
+    els.warning.classList.remove('hidden');
+    els.warning.textContent = `${state.frames.length} frames is a lot. GIFs get chunky past 60 or so. Consider trimming.`;
+  } else {
+    els.warning.classList.add('hidden');
+  }
+}
+
+// ---------- Section visibility ----------
+function showSections() {
+  els.previewPanel.classList.remove('hidden');
+  els.framesSection.classList.remove('hidden');
+  els.summary.classList.remove('hidden');
+}
+function hideSections() {
+  els.previewPanel.classList.add('hidden');
+  els.framesSection.classList.add('hidden');
+  els.summary.classList.add('hidden');
+  els.warning.classList.add('hidden');
+  els.drop.classList.remove('compact');
+  els.dropH.textContent = 'Drop your images here';
+  els.dropP.innerHTML = 'Or <strong>click anywhere</strong> in this box. Order matters, drag to rearrange afterwards. JPEG, PNG, WebP, HEIC.';
+}
+
+// ---------- Clear ----------
+els.clearBtn.addEventListener('click', () => {
+  for (const f of state.frames) { if (f.bitmap && f.bitmap.close) f.bitmap.close(); }
+  state.frames = [];
+  els.framesGrid.innerHTML = '';
+  state.previewIdx = 0;
+  state.previewLastSwitch = 0;
+  hideSections();
+});
+
+// ---------- Encode ----------
+els.downloadBtn.addEventListener('click', async () => {
+  if (state.encoding || state.frames.length === 0) return;
+  state.encoding = true;
+  const originalText = els.downloadBtn.textContent;
+  els.downloadBtn.disabled = true;
+  els.clearBtn.disabled = true;
+
+  try {
+    const gif = GIFEncoder();
+    const q = QUALITY_MAP[state.quality];
+    const { w, h } = getCanvasDims();
+
+    for (let i = 0; i < state.frames.length; i++) {
+      els.downloadBtn.textContent = `Encoding ${Math.round(((i) / state.frames.length) * 100)}%`;
+      const canvas = state.frames[i].renderedCanvas;
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const palette = quantize(imageData.data, q.palette);
+      const index = applyPalette(imageData.data, palette);
+      const opts = { palette, delay: state.duration };
+      if (i === 0) { opts.first = true; opts.repeat = 0; }
+      gif.writeFrame(index, w, h, opts);
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    gif.finish();
+    const buffer = gif.bytes();
+    const blob = new Blob([buffer], { type: 'image/gif' });
+    setEstimate(blob.size); // replace estimate with real size
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reel-${stamp()}.gif`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    console.error(err);
+    alert('Encoding failed: ' + (err.message || err));
+  } finally {
+    els.downloadBtn.textContent = originalText;
+    els.clearBtn.disabled = false;
+    state.encoding = false;
+    els.downloadBtn.disabled = state.frames.length === 0;
+  }
+});
+
+// ---------- Helpers ----------
+function clampInt(v, min, max, fallback) {
+  const n = parseInt(v, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function formatBytes(b) {
+  if (b < 1024) return [String(Math.round(b)), 'B'];
+  if (b < 1024 * 1024) return [(b / 1024).toFixed(0), 'KB'];
+  return [(b / 1024 / 1024).toFixed(2), 'MB'];
+}
+
+function stamp() {
+  const d = new Date();
+  return d.getFullYear() + ('0'+(d.getMonth()+1)).slice(-2) + ('0'+d.getDate()).slice(-2);
+}
+
+// Initial UI state
+updateSummary();
+updateEstimate();
+</script>
+
+</body>
+</html>

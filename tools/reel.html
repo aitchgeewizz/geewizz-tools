@@ -152,7 +152,7 @@
     margin-top: 4px;
   }
   .controls-row2 { grid-template-columns: 1.6fr 0.8fr 0.8fr 0.8fr; }
-  .controls-row3 { grid-template-columns: 2fr 1fr 1fr; }
+  .controls-row3 { grid-template-columns: 2fr 1fr 1fr 1fr; }
 
   .direction-row {
     margin-top: 8px;
@@ -726,6 +726,13 @@
           <button data-val="on">On</button>
         </div>
       </div>
+      <div class="control">
+        <label>Ken Burns</label>
+        <div class="seg" id="kenburns-seg">
+          <button data-val="off" class="active">Off</button>
+          <button data-val="on">On</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -821,6 +828,7 @@ const state = {
   direction: 'left',     // 'left' | 'right' | 'up' | 'down' (slide/push only)
   loop: 'oneway',        // 'oneway' | 'pingpong'
   holdEnds: false,
+  kenBurns: false,
   previewSequence: [],   // [{ canvas, durationMs }]
   previewIdx: 0,
   previewElapsed: 0,
@@ -844,6 +852,18 @@ const TRANSITION_FRAMES = { fade: 5, slide: 6, push: 6, zoom: 5, blur: 5 };
 const BLUR_PEAK_PX = 12;
 const ZOOM_AMPLITUDE = 0.2;     // 20% scale change during zoom transition
 const PUSH_OVERSHOOT = 1.7;     // spring overshoot factor for push
+
+// Ken Burns moves: pan as a fraction of canvas dim, scale in absolute units.
+// Each tile picks a move based on tile.id modulo length so behaviour is
+// stable across reorder but varied across tiles.
+const KEN_BURNS_MOVES = [
+  { startScale: 1.05, endScale: 1.20, panX:  0.00, panY:  0.00 }, // zoom in centre
+  { startScale: 1.10, endScale: 1.20, panX: -0.04, panY: -0.04 }, // zoom in, drift upper-left
+  { startScale: 1.10, endScale: 1.20, panX:  0.04, panY: -0.04 }, // zoom in, drift upper-right
+  { startScale: 1.10, endScale: 1.20, panX: -0.04, panY:  0.04 }, // zoom in, drift lower-left
+  { startScale: 1.10, endScale: 1.20, panX:  0.04, panY:  0.04 }, // zoom in, drift lower-right
+  { startScale: 1.20, endScale: 1.05, panX:  0.00, panY:  0.00 }, // zoom out centre
+];
 
 let nextId = 1;
 
@@ -870,6 +890,7 @@ const els = {
   directionSeg: document.getElementById('direction-seg'),
   loopSeg: document.getElementById('loop-seg'),
   holdSeg: document.getElementById('hold-seg'),
+  kenburnsSeg: document.getElementById('kenburns-seg'),
   warning: document.getElementById('warning'),
   previewPanel: document.getElementById('preview-panel'),
   previewCanvas: document.getElementById('preview-canvas'),
@@ -939,6 +960,10 @@ wireSeg(els.loopSeg, (v) => {
 });
 wireSeg(els.holdSeg, (v) => {
   state.holdEnds = v === 'on';
+  rebuildPreviewSequence();
+});
+wireSeg(els.kenburnsSeg, (v) => {
+  state.kenBurns = v === 'on';
   rebuildPreviewSequence();
 });
 
@@ -1412,10 +1437,17 @@ function rebuildPreviewSequence() {
   for (const tile of state.tiles) {
     if (tile.status !== 'ready') continue;
     if (tile.type === 'image' && tile.renderedCanvas) {
+      let frames;
+      if (state.kenBurns) {
+        const { w, h } = getCanvasDims();
+        frames = buildKenBurnsFrames(tile.renderedCanvas, w, h, state.duration, tile.id);
+      } else {
+        frames = [{ canvas: tile.renderedCanvas, durationMs: state.duration }];
+      }
       segments.push({
-        frames: [{ canvas: tile.renderedCanvas, durationMs: state.duration }],
-        firstFrame: tile.renderedCanvas,
-        lastFrame: tile.renderedCanvas,
+        frames,
+        firstFrame: frames[0].canvas,
+        lastFrame: frames[frames.length - 1].canvas,
       });
     } else if ((tile.type === 'video' || tile.type === 'gif') && tile.renderedFrames && tile.renderedFrames.length) {
       const frames = expandVideoFrames(tile.renderedFrames);
@@ -1593,6 +1625,40 @@ function drawCenteredScaled(ctx, src, scale, alpha, w, h) {
   ctx.drawImage(src, (w - sw) / 2, (h - sh) / 2, sw, sh);
   ctx.globalAlpha = 1;
 }
+
+function buildKenBurnsFrames(sourceCanvas, w, h, totalDurationMs, tileId) {
+  // Convert one held image into a slow pan + zoom sequence. Picks a move
+  // deterministically from tile.id so the same image always gets the same
+  // behaviour, but neighbouring images get different ones for variety.
+  const move = KEN_BURNS_MOVES[tileId % KEN_BURNS_MOVES.length];
+  const frameCount = Math.max(2, Math.round(totalDurationMs / VIDEO_FRAME_DELAY_MS));
+  const out = [];
+  for (let i = 0; i < frameCount; i++) {
+    const t = frameCount > 1 ? i / (frameCount - 1) : 0;
+    const scale = lerp(move.startScale, move.endScale, t);
+    const panX = lerp(0, move.panX, t) * w;
+    const panY = lerp(0, move.panY, t) * h;
+
+    const canvas = mkCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+
+    // Fill background in case the scaled image doesn't cover (rare with
+    // scale > 1, but a safety net).
+    ctx.fillStyle = state.fit === 'contain' ? BG_MAP[state.bg] : '#000';
+    ctx.fillRect(0, 0, w, h);
+
+    const sw = w * scale;
+    const sh = h * scale;
+    const x = (w - sw) / 2 + panX;
+    const y = (h - sh) / 2 + panY;
+    ctx.drawImage(sourceCanvas, x, y, sw, sh);
+
+    out.push({ canvas, durationMs: VIDEO_FRAME_DELAY_MS });
+  }
+  return out;
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
 
 function buildBlurFrames(A, B, w, h) {
   // Crossfade with a blur peak in the middle. Canvas filter blur is supported

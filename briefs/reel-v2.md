@@ -18,22 +18,20 @@ In v1, every frame was an image rendered to a canvas at the target size and aspe
 
 GIFs are treated as videos in this model. They have a native frame sequence and a duration. Same UI, same code path.
 
-### New control: Video playback fps
+### No Video playback fps control
 
-Segmented control: `2 / 4 / 8 / 12 fps`. Default 8.
+Earlier drafts proposed a Video playback fps control. Removed during Stage 1 because it confused the timing model. Videos now always play at real speed (1x) at a fixed internal rate (10 fps). Image tiles continue to use the Frame duration slider.
 
-Only shown when the tile list contains at least one video or GIF. Controls the playback rate of video tiles in the encoded output. Higher = smoother + bigger file.
-
-Image tiles continue to use the Frame duration slider.
+The fixed 10 fps internal rate is a compromise between smoothness and GIF file size. Encoded as 100ms delay per video frame.
 
 ### Encoded sequence
 
 When the user hits Download, the encoder walks tiles in order. For each tile:
 
 - Image: one encoded frame with delay = Frame duration slider value
-- Video: each cached frame written with delay = `1000 / videoFps` ms
+- Video: each cached frame written with delay = 100ms (= 10 fps real-time playback)
 
-GIF supports per-frame delay natively. MP4 will be re-timed at the encoder fps.
+GIF supports per-frame delay natively. MP4 will be re-timed at a constant 10 fps base, with image frames stretched to occupy their slider duration.
 
 ---
 
@@ -57,8 +55,8 @@ Each video tile holds an array of canvases at the current target dimensions. Whe
 The cached frames are at the internal max rate (12 fps). The output fps samples this set: at 8 fps it takes every other frame from a 12 fps cache, at 4 fps every third, etc. No re-decode needed when the user changes Video playback fps.
 
 ### Limits
-- Soft warning if a single video tile is longer than 8 seconds (= 96 cached frames). Suggest trimming.
-- Hard cap at 200 cached frames per video. Anything longer is truncated with a warning.
+- Hard auto-trim: videos longer than 8 seconds are clipped to the first 8 seconds at decode time. The tile shows `(cut)` next to its duration, and the warning bar names the file. This is the "drop in whatever, the tool optimises" philosophy. v3 may add explicit trim controls so you can pick a portion.
+- 80 cached frames per video (8 seconds at 10 fps internal).
 
 ### Tile UI
 - Same square aspect grid

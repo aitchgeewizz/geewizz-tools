@@ -144,14 +144,13 @@
   .controls-row2 {
     grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: 1.6fr 0.9fr 0.9fr 0.9fr;
+    grid-template-columns: 2fr 1fr 1fr;
     gap: 24px 28px;
     align-items: end;
     padding-top: 20px;
     border-top: 1px dashed var(--line);
     margin-top: 4px;
   }
-  .controls-row2.no-vfps { grid-template-columns: 2fr 1fr 1fr; }
 
   .control label {
     display: block;
@@ -587,7 +586,6 @@
   @media (max-width: 860px) {
     .controls { grid-template-columns: 1fr 1fr; }
     .controls-row2 { grid-template-columns: 1fr 1fr; }
-    .controls-row2.no-vfps { grid-template-columns: 1fr 1fr; }
     .preview-panel { grid-template-columns: 1fr; gap: 20px; }
   }
 
@@ -596,7 +594,7 @@
     .brand h1 { font-size: 52px; }
     header { flex-direction: column; align-items: flex-start; gap: 16px; }
     .meta { text-align: left; }
-    .controls, .controls-row2, .controls-row2.no-vfps { grid-template-columns: 1fr; }
+    .controls, .controls-row2 { grid-template-columns: 1fr; }
     .summary { flex-direction: column; gap: 20px; align-items: flex-start; }
   }
 </style>
@@ -648,20 +646,11 @@
       </div>
     </div>
 
-    <div class="controls-row2 no-vfps" id="controls-row2">
+    <div class="controls-row2" id="controls-row2">
       <div class="control">
         <label for="duration">Image frame duration</label>
         <div class="value"><span id="duration-val">0.50</span><span>s</span></div>
         <input type="range" id="duration" min="0.1" max="2.0" step="0.05" value="0.5">
-      </div>
-      <div class="control hidden" id="vfps-control">
-        <label>Video playback</label>
-        <div class="seg" id="vfps-seg">
-          <button data-val="2">2</button>
-          <button data-val="4">4</button>
-          <button data-val="8" class="active">8</button>
-          <button data-val="12">12</button>
-        </div>
       </div>
       <div class="control">
         <label>Size</label>
@@ -769,7 +758,6 @@ const state = {
   size: 'medium',
   quality: 'balanced',
   duration: 500,
-  videoFps: 8,
   previewSequence: [],  // [{ canvas, durationMs }]
   previewIdx: 0,
   previewElapsed: 0,
@@ -784,8 +772,10 @@ const QUALITY_MAP = {
   pristine:  { palette: 256, bppEst: 7 },
 };
 const BG_MAP = { cream: '#f4efe6', white: '#ffffff', black: '#1a1816' };
-const VIDEO_INTERNAL_FPS = 12;
-const VIDEO_MAX_FRAMES = 96;
+const VIDEO_INTERNAL_FPS = 10;   // playback rate for video tiles. Trade-off: smoothness vs file size.
+const VIDEO_MAX_SECONDS = 8;     // auto-trim videos longer than this
+const VIDEO_MAX_FRAMES = VIDEO_INTERNAL_FPS * VIDEO_MAX_SECONDS;
+const VIDEO_FRAME_DELAY_MS = 1000 / VIDEO_INTERNAL_FPS;
 const VIDEO_CAPTURE_MAX_DIM = 720;
 
 let nextId = 1;
@@ -807,9 +797,6 @@ const els = {
   qualitySeg: document.getElementById('quality-seg'),
   duration: document.getElementById('duration'),
   durationVal: document.getElementById('duration-val'),
-  vfpsControl: document.getElementById('vfps-control'),
-  vfpsSeg: document.getElementById('vfps-seg'),
-  controlsRow2: document.getElementById('controls-row2'),
   warning: document.getElementById('warning'),
   previewPanel: document.getElementById('preview-panel'),
   previewCanvas: document.getElementById('preview-canvas'),
@@ -856,12 +843,6 @@ wireSeg(els.sizeSeg, (v) => {
 });
 wireSeg(els.qualitySeg, (v) => {
   state.quality = v;
-  updateEstimate();
-});
-wireSeg(els.vfpsSeg, (v) => {
-  state.videoFps = parseInt(v, 10);
-  rebuildPreviewSequence();
-  updateSummary();
   updateEstimate();
 });
 
@@ -990,8 +971,6 @@ async function addFiles(files) {
     newTiles.push(tile);
     addTileToGrid(tile);
   }
-
-  updateVfpsVisibility();
 
   // Decode in parallel but cap concurrency (videos are heavy)
   await Promise.all(newTiles.map(decodeTile));
@@ -1191,7 +1170,6 @@ function removeTile(id) {
   const el = els.framesGrid.querySelector(`[data-id="${id}"]`);
   if (el) el.remove();
   updateTileIndices();
-  updateVfpsVisibility();
   if (state.tiles.length === 0) {
     hideSections();
   } else {
@@ -1338,8 +1316,8 @@ function rebuildPreviewSequence() {
     if (tile.type === 'image') {
       if (tile.renderedCanvas) seq.push({ canvas: tile.renderedCanvas, durationMs: state.duration });
     } else {
-      const sampled = sampleVideoFrames(tile.renderedFrames || [], tile.nativeDurationMs, state.videoFps);
-      for (const f of sampled) seq.push(f);
+      const expanded = expandVideoFrames(tile.renderedFrames || []);
+      for (const f of expanded) seq.push(f);
     }
   }
   state.previewSequence = seq;
@@ -1351,23 +1329,10 @@ function rebuildPreviewSequence() {
   updateEstimate();
 }
 
-function sampleVideoFrames(framesAtRendered, durationMs, outputFps) {
-  if (!framesAtRendered.length || durationMs <= 0) return [];
-  const stride = 1000 / outputFps;
-  const out = [];
-  let t = 0;
-  while (t < durationMs - 1) {
-    // Find frame closest to time t
-    let best = framesAtRendered[0];
-    let bestDist = Math.abs(best.timeMs - t);
-    for (const f of framesAtRendered) {
-      const d = Math.abs(f.timeMs - t);
-      if (d < bestDist) { best = f; bestDist = d; }
-    }
-    out.push({ canvas: best.canvas, durationMs: stride });
-    t += stride;
-  }
-  return out;
+function expandVideoFrames(framesAtRendered) {
+  // Videos always play at real-time at VIDEO_INTERNAL_FPS.
+  // Each cached frame becomes one output frame with a fixed delay.
+  return framesAtRendered.map(f => ({ canvas: f.canvas, durationMs: VIDEO_FRAME_DELAY_MS }));
 }
 
 // ---------- Preview animation ----------
@@ -1437,12 +1402,14 @@ function updateSummary() {
 
 function updateWarning() {
   const messages = [];
-  if (state.previewSequence.length > 100) {
-    messages.push(`${state.previewSequence.length} encoded frames is a lot. The GIF will be chunky. Consider fewer tiles or a lower video playback fps.`);
+  const truncatedNames = state.tiles.filter(t => t.truncated).map(t => t.name);
+  if (truncatedNames.length === 1) {
+    messages.push(`"${truncatedNames[0]}" was longer than ${VIDEO_MAX_SECONDS}s, only the first ${VIDEO_MAX_SECONDS}s is in the reel.`);
+  } else if (truncatedNames.length > 1) {
+    messages.push(`${truncatedNames.length} videos were longer than ${VIDEO_MAX_SECONDS}s and have been trimmed to the first ${VIDEO_MAX_SECONDS}s each.`);
   }
-  const anyTruncated = state.tiles.some(t => t.truncated);
-  if (anyTruncated) {
-    messages.push('One or more videos were longer than 8 seconds and were trimmed to fit.');
+  if (state.previewSequence.length > 120) {
+    messages.push(`${state.previewSequence.length} total frames is a lot for a GIF. The file will be chunky.`);
   }
   if (messages.length) {
     els.warning.classList.remove('hidden');
@@ -1450,12 +1417,6 @@ function updateWarning() {
   } else {
     els.warning.classList.add('hidden');
   }
-}
-
-function updateVfpsVisibility() {
-  const hasMotion = state.tiles.some(t => t.type === 'video' || t.type === 'gif');
-  els.vfpsControl.classList.toggle('hidden', !hasMotion);
-  els.controlsRow2.classList.toggle('no-vfps', !hasMotion);
 }
 
 // ---------- Section visibility ----------
@@ -1472,7 +1433,6 @@ function hideSections() {
   els.drop.classList.remove('compact');
   els.dropH.textContent = 'Drop your images, videos or GIFs here';
   els.dropP.innerHTML = 'Or <strong>click anywhere</strong> in this box. Order matters, drag tiles to rearrange afterwards. Stills, MP4 and GIF all welcome.';
-  updateVfpsVisibility();
 }
 
 // ---------- Clear ----------

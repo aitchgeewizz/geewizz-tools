@@ -141,16 +141,18 @@
     align-items: start;
   }
 
-  .controls-row2 {
+  .controls-row2,
+  .controls-row3 {
     grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr;
     gap: 24px 28px;
     align-items: end;
     padding-top: 20px;
     border-top: 1px dashed var(--line);
     margin-top: 4px;
   }
+  .controls-row2 { grid-template-columns: 2fr 1fr 1fr; }
+  .controls-row3 { grid-template-columns: 1fr 1fr 1fr; }
 
   .control label {
     display: block;
@@ -585,7 +587,7 @@
 
   @media (max-width: 860px) {
     .controls { grid-template-columns: 1fr 1fr; }
-    .controls-row2 { grid-template-columns: 1fr 1fr; }
+    .controls-row2, .controls-row3 { grid-template-columns: 1fr 1fr; }
     .preview-panel { grid-template-columns: 1fr; gap: 20px; }
   }
 
@@ -594,7 +596,7 @@
     .brand h1 { font-size: 52px; }
     header { flex-direction: column; align-items: flex-start; gap: 16px; }
     .meta { text-align: left; }
-    .controls, .controls-row2 { grid-template-columns: 1fr; }
+    .controls, .controls-row2, .controls-row3 { grid-template-columns: 1fr; }
     .summary { flex-direction: column; gap: 20px; align-items: flex-start; }
   }
 </style>
@@ -666,6 +668,30 @@
           <button data-val="punchy">Punchy</button>
           <button data-val="balanced" class="active">Balanced</button>
           <button data-val="pristine">Pristine</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls-row3" id="controls-row3">
+      <div class="control">
+        <label>Transition</label>
+        <div class="seg" id="transition-seg">
+          <button data-val="cut" class="active">Cut</button>
+          <button data-val="crossfade">Crossfade</button>
+        </div>
+      </div>
+      <div class="control">
+        <label>Loop</label>
+        <div class="seg" id="loop-seg">
+          <button data-val="oneway" class="active">One way</button>
+          <button data-val="pingpong">Ping-pong</button>
+        </div>
+      </div>
+      <div class="control">
+        <label>Hold ends</label>
+        <div class="seg" id="hold-seg">
+          <button data-val="off" class="active">Off</button>
+          <button data-val="on">On</button>
         </div>
       </div>
     </div>
@@ -758,7 +784,10 @@ const state = {
   size: 'medium',
   quality: 'balanced',
   duration: 500,
-  previewSequence: [],  // [{ canvas, durationMs }]
+  transition: 'cut',     // 'cut' | 'crossfade'
+  loop: 'oneway',        // 'oneway' | 'pingpong'
+  holdEnds: false,
+  previewSequence: [],   // [{ canvas, durationMs }]
   previewIdx: 0,
   previewElapsed: 0,
   previewLastT: 0,
@@ -777,6 +806,7 @@ const VIDEO_MAX_SECONDS = 8;     // auto-trim videos longer than this
 const VIDEO_MAX_FRAMES = VIDEO_INTERNAL_FPS * VIDEO_MAX_SECONDS;
 const VIDEO_FRAME_DELAY_MS = 1000 / VIDEO_INTERNAL_FPS;
 const VIDEO_CAPTURE_MAX_DIM = 720;
+const CROSSFADE_FRAMES = 3;
 
 let nextId = 1;
 
@@ -797,6 +827,9 @@ const els = {
   qualitySeg: document.getElementById('quality-seg'),
   duration: document.getElementById('duration'),
   durationVal: document.getElementById('duration-val'),
+  transitionSeg: document.getElementById('transition-seg'),
+  loopSeg: document.getElementById('loop-seg'),
+  holdSeg: document.getElementById('hold-seg'),
   warning: document.getElementById('warning'),
   previewPanel: document.getElementById('preview-panel'),
   previewCanvas: document.getElementById('preview-canvas'),
@@ -844,6 +877,18 @@ wireSeg(els.sizeSeg, (v) => {
 wireSeg(els.qualitySeg, (v) => {
   state.quality = v;
   updateEstimate();
+});
+wireSeg(els.transitionSeg, (v) => {
+  state.transition = v;
+  rebuildPreviewSequence();
+});
+wireSeg(els.loopSeg, (v) => {
+  state.loop = v;
+  rebuildPreviewSequence();
+});
+wireSeg(els.holdSeg, (v) => {
+  state.holdEnds = v === 'on';
+  rebuildPreviewSequence();
 });
 
 els.bgSwatches.addEventListener('click', (e) => {
@@ -1310,16 +1355,55 @@ function updateTileDurationLabel(tile) {
 
 // ---------- Preview sequence ----------
 function rebuildPreviewSequence() {
-  const seq = [];
+  // 1. Build tile-level segments. Each segment is a contiguous run of frames
+  //    plus its visible first and last frame canvases (used for crossfades).
+  const segments = [];
   for (const tile of state.tiles) {
     if (tile.status !== 'ready') continue;
-    if (tile.type === 'image') {
-      if (tile.renderedCanvas) seq.push({ canvas: tile.renderedCanvas, durationMs: state.duration });
-    } else {
-      const expanded = expandVideoFrames(tile.renderedFrames || []);
-      for (const f of expanded) seq.push(f);
+    if (tile.type === 'image' && tile.renderedCanvas) {
+      segments.push({
+        frames: [{ canvas: tile.renderedCanvas, durationMs: state.duration }],
+        firstFrame: tile.renderedCanvas,
+        lastFrame: tile.renderedCanvas,
+      });
+    } else if ((tile.type === 'video' || tile.type === 'gif') && tile.renderedFrames && tile.renderedFrames.length) {
+      const frames = expandVideoFrames(tile.renderedFrames);
+      segments.push({
+        frames,
+        firstFrame: tile.renderedFrames[0].canvas,
+        lastFrame: tile.renderedFrames[tile.renderedFrames.length - 1].canvas,
+      });
     }
   }
+
+  // 2. Concatenate, inserting crossfade frames between segments if requested.
+  //    Crossfades only happen at tile boundaries, not between consecutive
+  //    frames within a single video tile.
+  let seq = [];
+  const { w, h } = getCanvasDims();
+  for (let i = 0; i < segments.length; i++) {
+    seq.push(...segments[i].frames);
+    if (state.transition === 'crossfade' && i < segments.length - 1) {
+      seq.push(...buildCrossfadeFrames(segments[i].lastFrame, segments[i+1].firstFrame, CROSSFADE_FRAMES, w, h));
+    }
+  }
+
+  // 3. Ping-pong: append reversed middle so the reel plays forward then back
+  //    Apply before holdEnds so the bookend holds land on the actual visible
+  //    endpoints of the played sequence.
+  if (state.loop === 'pingpong' && seq.length >= 3) {
+    const reversed = seq.slice(1, -1).reverse();
+    seq = [...seq, ...reversed];
+  }
+
+  // 4. Hold ends: bump first and last frame durations by 1.5x
+  if (state.holdEnds && seq.length >= 1) {
+    seq[0] = { ...seq[0], durationMs: Math.round(seq[0].durationMs * 1.5) };
+    if (seq.length > 1) {
+      seq[seq.length - 1] = { ...seq[seq.length - 1], durationMs: Math.round(seq[seq.length - 1].durationMs * 1.5) };
+    }
+  }
+
   state.previewSequence = seq;
   state.previewIdx = 0;
   state.previewElapsed = 0;
@@ -1333,6 +1417,25 @@ function expandVideoFrames(framesAtRendered) {
   // Videos always play at real-time at VIDEO_INTERNAL_FPS.
   // Each cached frame becomes one output frame with a fixed delay.
   return framesAtRendered.map(f => ({ canvas: f.canvas, durationMs: VIDEO_FRAME_DELAY_MS }));
+}
+
+function buildCrossfadeFrames(canvasA, canvasB, count, w, h) {
+  // Alpha-blend last frame of A toward first frame of B in `count` steps.
+  // Each intermediate is held for one video-frame's worth of time.
+  const out = [];
+  for (let i = 1; i <= count; i++) {
+    const alpha = i / (count + 1);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(canvasA, 0, 0);
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(canvasB, 0, 0);
+    ctx.globalAlpha = 1.0;
+    out.push({ canvas, durationMs: VIDEO_FRAME_DELAY_MS });
+  }
+  return out;
 }
 
 // ---------- Preview animation ----------

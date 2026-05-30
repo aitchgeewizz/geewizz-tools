@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Reel — quick looping GIFs from a set of images</title>
+<title>Reel — quick looping GIFs from images, videos and GIFs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -144,14 +144,14 @@
   .controls-row2 {
     grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr;
+    grid-template-columns: 1.6fr 0.9fr 0.9fr 0.9fr;
     gap: 24px 28px;
     align-items: end;
-    padding-top: 4px;
+    padding-top: 20px;
     border-top: 1px dashed var(--line);
     margin-top: 4px;
-    padding-top: 20px;
   }
+  .controls-row2.no-vfps { grid-template-columns: 2fr 1fr 1fr; }
 
   .control label {
     display: block;
@@ -442,6 +442,7 @@
     padding: 2px 6px;
     font-weight: 700;
     letter-spacing: 0.06em;
+    z-index: 2;
   }
 
   .frame-tile .frame-remove {
@@ -461,9 +462,57 @@
     justify-content: center;
     padding: 0;
     font-family: inherit;
+    z-index: 3;
   }
   .frame-tile:hover .frame-remove { display: flex; }
   .frame-tile .frame-remove:hover { background: var(--accent); }
+
+  /* Video tile decorations */
+  .tile-play {
+    position: absolute;
+    top: 4px;
+    right: 30px;
+    width: 22px;
+    height: 22px;
+    background: var(--accent);
+    color: var(--bg-card);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .tile-play svg { width: 10px; height: 10px; }
+
+  .tile-duration {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    background: var(--ink);
+    color: var(--bg-card);
+    font-size: 10px;
+    padding: 2px 6px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .frame-tile.decoding::after {
+    content: 'decoding...';
+    position: absolute;
+    inset: 0;
+    background: var(--bg-card);
+    color: var(--ink-faint);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+    z-index: 4;
+  }
 
   /* Summary bar */
   .summary {
@@ -538,6 +587,7 @@
   @media (max-width: 860px) {
     .controls { grid-template-columns: 1fr 1fr; }
     .controls-row2 { grid-template-columns: 1fr 1fr; }
+    .controls-row2.no-vfps { grid-template-columns: 1fr 1fr; }
     .preview-panel { grid-template-columns: 1fr; gap: 20px; }
   }
 
@@ -546,7 +596,7 @@
     .brand h1 { font-size: 52px; }
     header { flex-direction: column; align-items: flex-start; gap: 16px; }
     .meta { text-align: left; }
-    .controls, .controls-row2 { grid-template-columns: 1fr; }
+    .controls, .controls-row2, .controls-row2.no-vfps { grid-template-columns: 1fr; }
     .summary { flex-direction: column; gap: 20px; align-items: flex-start; }
   }
 </style>
@@ -557,11 +607,11 @@
   <header>
     <div class="brand">
       <h1>Reel<em>.</em></h1>
-      <p>Drop images, get a looping GIF. Pick the size, the pace, hit download. Nothing leaves your browser.</p>
+      <p>Drop images, videos or GIFs. Sequence them, time them, hit download. Nothing leaves your browser.</p>
     </div>
     <div class="meta">
       <div><a href="/">← all tools</a></div>
-      <div>v1.0</div>
+      <div>v2.0</div>
       <div>by <span>HG</span></div>
     </div>
   </header>
@@ -598,11 +648,20 @@
       </div>
     </div>
 
-    <div class="controls-row2">
+    <div class="controls-row2 no-vfps" id="controls-row2">
       <div class="control">
-        <label for="duration">Frame duration</label>
+        <label for="duration">Image frame duration</label>
         <div class="value"><span id="duration-val">0.50</span><span>s</span></div>
         <input type="range" id="duration" min="0.1" max="2.0" step="0.05" value="0.5">
+      </div>
+      <div class="control hidden" id="vfps-control">
+        <label>Video playback</label>
+        <div class="seg" id="vfps-seg">
+          <button data-val="2">2</button>
+          <button data-val="4">4</button>
+          <button data-val="8" class="active">8</button>
+          <button data-val="12">12</button>
+        </div>
       </div>
       <div class="control">
         <label>Size</label>
@@ -630,9 +689,9 @@
         <path d="M5 38 L16 50 L27 38"/>
       </svg>
     </div>
-    <h2 id="drop-h">Drop your images here</h2>
-    <p id="drop-p">Or <strong>click anywhere</strong> in this box. Order matters, drag to rearrange afterwards. JPEG, PNG, WebP, HEIC.</p>
-    <input type="file" id="file-input" multiple accept="image/*">
+    <h2 id="drop-h">Drop your images, videos or GIFs here</h2>
+    <p id="drop-p">Or <strong>click anywhere</strong> in this box. Order matters, drag tiles to rearrange afterwards. Stills, MP4 and GIF all welcome.</p>
+    <input type="file" id="file-input" multiple accept="image/*,video/*">
   </div>
 
   <div class="warning hidden" id="warning"></div>
@@ -672,8 +731,8 @@
   <div class="summary hidden" id="summary">
     <div class="summary-stats">
       <div class="summary-stat">
-        <div class="label">Frames</div>
-        <div class="value" id="stat-frames">0</div>
+        <div class="label">Tiles</div>
+        <div class="value" id="stat-tiles">0</div>
       </div>
       <div class="summary-stat">
         <div class="label">Loop</div>
@@ -691,17 +750,18 @@
   </div>
 
   <footer>
-    <p><em>Everything happens in your browser.</em> Your images don't go anywhere.</p>
+    <p><em>Everything happens in your browser.</em> Your files don't go anywhere.</p>
     <p>Save this file anywhere. Bookmark it. Open it offline. It just works.</p>
   </footer>
 </div>
 
 <script type="module">
 import { GIFEncoder, quantize, applyPalette } from 'https://cdn.jsdelivr.net/npm/gifenc@1.0.3/+esm';
+import { parseGIF, decompressFrames } from 'https://cdn.jsdelivr.net/npm/gifuct-js@2.1.2/+esm';
 
 // ---------- State ----------
 const state = {
-  frames: [],
+  tiles: [],   // { id, type, file, name, status, bitmap?, posterCanvas?, cachedFrames?, renderedCanvas?, renderedFrames?, nativeDurationMs? }
   aspect: '1:1',
   customAspect: { w: 4, h: 5 },
   fit: 'cover',
@@ -709,8 +769,11 @@ const state = {
   size: 'medium',
   quality: 'balanced',
   duration: 500,
+  videoFps: 8,
+  previewSequence: [],  // [{ canvas, durationMs }]
   previewIdx: 0,
-  previewLastSwitch: 0,
+  previewElapsed: 0,
+  previewLastT: 0,
   encoding: false,
 };
 
@@ -721,6 +784,9 @@ const QUALITY_MAP = {
   pristine:  { palette: 256, bppEst: 7 },
 };
 const BG_MAP = { cream: '#f4efe6', white: '#ffffff', black: '#1a1816' };
+const VIDEO_INTERNAL_FPS = 12;
+const VIDEO_MAX_FRAMES = 96;
+const VIDEO_CAPTURE_MAX_DIM = 720;
 
 let nextId = 1;
 
@@ -741,6 +807,9 @@ const els = {
   qualitySeg: document.getElementById('quality-seg'),
   duration: document.getElementById('duration'),
   durationVal: document.getElementById('duration-val'),
+  vfpsControl: document.getElementById('vfps-control'),
+  vfpsSeg: document.getElementById('vfps-seg'),
+  controlsRow2: document.getElementById('controls-row2'),
   warning: document.getElementById('warning'),
   previewPanel: document.getElementById('preview-panel'),
   previewCanvas: document.getElementById('preview-canvas'),
@@ -753,7 +822,7 @@ const els = {
   framesSection: document.getElementById('frames-section'),
   framesGrid: document.getElementById('frames-grid'),
   summary: document.getElementById('summary'),
-  statFrames: document.getElementById('stat-frames'),
+  statTiles: document.getElementById('stat-tiles'),
   statLoop: document.getElementById('stat-loop'),
   statSize: document.getElementById('stat-size'),
   clearBtn: document.getElementById('clear-btn'),
@@ -774,19 +843,25 @@ function wireSeg(el, onChange) {
 wireSeg(els.aspectSeg, (v) => {
   state.aspect = v;
   els.customAspect.classList.toggle('show', v === 'custom');
-  reflowFrames();
+  reflowAllTiles();
 });
 wireSeg(els.fitSeg, (v) => {
   state.fit = v;
   els.bgControl.querySelector('.swatches').classList.toggle('disabled', v === 'cover');
-  reflowFrames();
+  reflowAllTiles();
 });
 wireSeg(els.sizeSeg, (v) => {
   state.size = v;
-  reflowFrames();
+  reflowAllTiles();
 });
 wireSeg(els.qualitySeg, (v) => {
   state.quality = v;
+  updateEstimate();
+});
+wireSeg(els.vfpsSeg, (v) => {
+  state.videoFps = parseInt(v, 10);
+  rebuildPreviewSequence();
+  updateSummary();
   updateEstimate();
 });
 
@@ -796,30 +871,40 @@ els.bgSwatches.addEventListener('click', (e) => {
   els.bgSwatches.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
   btn.classList.add('active');
   state.bg = btn.dataset.val;
-  if (state.fit === 'contain') reflowFrames();
+  if (state.fit === 'contain') reflowAllTiles();
 });
 
 els.customW.addEventListener('input', () => {
-  const v = clampInt(els.customW.value, 1, 100, 4);
-  state.customAspect.w = v;
-  if (state.aspect === 'custom') reflowFrames();
+  state.customAspect.w = clampInt(els.customW.value, 1, 100, 4);
+  if (state.aspect === 'custom') reflowAllTiles();
 });
 els.customH.addEventListener('input', () => {
-  const v = clampInt(els.customH.value, 1, 100, 5);
-  state.customAspect.h = v;
-  if (state.aspect === 'custom') reflowFrames();
+  state.customAspect.h = clampInt(els.customH.value, 1, 100, 5);
+  if (state.aspect === 'custom') reflowAllTiles();
 });
 
 els.duration.addEventListener('input', () => {
   const s = parseFloat(els.duration.value);
   state.duration = Math.round(s * 1000);
   els.durationVal.textContent = s.toFixed(2);
+  rebuildPreviewSequence();
   updateSummary();
   updateEstimate();
 });
 
-// Initial state: cover so background is dimmed
+// Initial: cover so background swatches dim
 els.bgControl.querySelector('.swatches').classList.add('disabled');
+
+// ---------- File classification ----------
+function classifyFile(file) {
+  if (!file) return null;
+  const name = file.name.toLowerCase();
+  const type = (file.type || '').toLowerCase();
+  if (type === 'image/gif' || name.endsWith('.gif')) return 'gif';
+  if (type.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(name)) return 'video';
+  if (type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif|bmp|avif)$/i.test(name)) return 'image';
+  return null;
+}
 
 // ---------- Drop and file input ----------
 els.drop.addEventListener('click', () => els.fileInput.click());
@@ -868,7 +953,7 @@ async function getFilesFromDrop(dt) {
   } else {
     for (const f of dt.files) files.push(f);
   }
-  return files.filter(f => f && (f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name)));
+  return files.filter(f => classifyFile(f) !== null);
 }
 
 function walkEntry(entry, out) {
@@ -884,39 +969,64 @@ function walkEntry(entry, out) {
   });
 }
 
-// ---------- Adding frames ----------
+// ---------- Adding tiles ----------
 async function addFiles(files) {
-  files = files.filter(f => f && (f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name)));
-  if (files.length === 0) return;
+  const valid = files.map(f => ({ file: f, type: classifyFile(f) })).filter(x => x.type);
+  if (valid.length === 0) return;
 
-  // Sort by name so dropping a folder preserves alphabetical order
-  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+  // Sort by name for deterministic order on folder drop
+  valid.sort((a, b) => a.file.name.localeCompare(b.file.name, undefined, { numeric: true, sensitivity: 'base' }));
 
   showSections();
   els.drop.classList.add('compact');
   els.dropH.textContent = 'Drop more in';
   els.dropP.innerHTML = 'Or click here to add more. Drag tiles below to reorder.';
 
-  for (const file of files) {
+  const newTiles = [];
+  for (const { file, type } of valid) {
     const id = nextId++;
-    const frame = { id, file, name: file.name, bitmap: null, renderedCanvas: null, thumbUrl: null };
-    state.frames.push(frame);
-    addFrameTile(frame);
+    const tile = { id, type, file, name: file.name, status: 'decoding' };
+    state.tiles.push(tile);
+    newTiles.push(tile);
+    addTileToGrid(tile);
   }
 
-  // Decode all newly added bitmaps in parallel
-  await Promise.all(state.frames.filter(f => !f.bitmap).map(decodeFrame));
+  updateVfpsVisibility();
 
-  reflowFrames();
+  // Decode in parallel but cap concurrency (videos are heavy)
+  await Promise.all(newTiles.map(decodeTile));
+
+  reflowAllTiles();
   updateSummary();
 }
 
-async function decodeFrame(frame) {
+async function decodeTile(tile) {
   try {
-    frame.bitmap = await createImageBitmap(frame.file, { imageOrientation: 'from-image' });
-  } catch {
-    frame.bitmap = await loadViaImage(frame.file);
+    if (tile.type === 'image') {
+      try {
+        tile.bitmap = await createImageBitmap(tile.file, { imageOrientation: 'from-image' });
+      } catch {
+        tile.bitmap = await loadViaImage(tile.file);
+      }
+    } else if (tile.type === 'video') {
+      const result = await decodeVideoFile(tile.file);
+      tile.cachedFrames = result.cachedFrames;
+      tile.nativeDurationMs = result.nativeDurationMs;
+      tile.truncated = result.truncated;
+    } else if (tile.type === 'gif') {
+      const result = await decodeGifFile(tile.file);
+      tile.cachedFrames = result.cachedFrames;
+      tile.nativeDurationMs = result.nativeDurationMs;
+      tile.truncated = false;
+    }
+    tile.status = 'ready';
+  } catch (err) {
+    console.error('Decode failed for', tile.name, err);
+    tile.status = 'error';
+    tile.error = err.message || 'Decode failed';
   }
+  const el = els.framesGrid.querySelector(`[data-id="${tile.id}"]`);
+  if (el) el.classList.remove('decoding');
 }
 
 function loadViaImage(file) {
@@ -929,42 +1039,172 @@ function loadViaImage(file) {
   });
 }
 
-// ---------- Frame tiles ----------
-function addFrameTile(frame) {
-  const tile = document.createElement('div');
-  tile.className = 'frame-tile';
-  tile.dataset.id = frame.id;
-  tile.innerHTML = `
+// ---------- Decode: video file ----------
+async function decodeVideoFile(file) {
+  const videoEl = document.createElement('video');
+  videoEl.muted = true;
+  videoEl.playsInline = true;
+  videoEl.preload = 'auto';
+  videoEl.src = URL.createObjectURL(file);
+
+  await new Promise((resolve, reject) => {
+    videoEl.onloadedmetadata = () => resolve();
+    videoEl.onerror = () => reject(new Error('Could not load video'));
+  });
+
+  const nativeDuration = videoEl.duration;
+  if (!isFinite(nativeDuration) || nativeDuration <= 0) {
+    URL.revokeObjectURL(videoEl.src);
+    throw new Error('Could not read video duration');
+  }
+
+  const idealFrameCount = Math.round(nativeDuration * VIDEO_INTERNAL_FPS);
+  const frameCount = Math.min(idealFrameCount, VIDEO_MAX_FRAMES);
+  const stride = nativeDuration / frameCount;
+  const truncated = frameCount < idealFrameCount;
+
+  const vw = videoEl.videoWidth;
+  const vh = videoEl.videoHeight;
+  const scale = Math.min(VIDEO_CAPTURE_MAX_DIM / Math.max(vw, vh), 1);
+  const cw = Math.max(2, Math.round(vw * scale));
+  const ch = Math.max(2, Math.round(vh * scale));
+
+  const cachedFrames = [];
+  for (let i = 0; i < frameCount; i++) {
+    const t = i * stride;
+    await seekVideoTo(videoEl, t);
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    canvas.getContext('2d').drawImage(videoEl, 0, 0, cw, ch);
+    cachedFrames.push({ canvas, timeMs: t * 1000 });
+  }
+
+  URL.revokeObjectURL(videoEl.src);
+
+  const effectiveDurationMs = frameCount * stride * 1000;
+  return { cachedFrames, nativeDurationMs: effectiveDurationMs, truncated };
+}
+
+function seekVideoTo(videoEl, t) {
+  return new Promise((resolve) => {
+    const onSeeked = () => {
+      videoEl.removeEventListener('seeked', onSeeked);
+      resolve();
+    };
+    videoEl.addEventListener('seeked', onSeeked);
+    try { videoEl.currentTime = t; } catch { resolve(); }
+  });
+}
+
+// ---------- Decode: GIF file ----------
+async function decodeGifFile(file) {
+  const buf = await file.arrayBuffer();
+  const gif = parseGIF(buf);
+  const frames = decompressFrames(gif, true);
+
+  const w = gif.lsd.width;
+  const h = gif.lsd.height;
+  const composite = document.createElement('canvas');
+  composite.width = w;
+  composite.height = h;
+  const ctx = composite.getContext('2d');
+
+  // Background fill (transparent by default, looks fine for most GIFs)
+  ctx.clearRect(0, 0, w, h);
+
+  const cachedFrames = [];
+  let timeMs = 0;
+
+  for (const frame of frames) {
+    // Track restore point for disposalType 3 (rarely used, skipped here)
+    let backupCanvas = null;
+    if (frame.disposalType === 3) {
+      backupCanvas = document.createElement('canvas');
+      backupCanvas.width = w;
+      backupCanvas.height = h;
+      backupCanvas.getContext('2d').drawImage(composite, 0, 0);
+    }
+
+    // Paint the patch
+    const patch = new ImageData(new Uint8ClampedArray(frame.patch), frame.dims.width, frame.dims.height);
+    const patchCanvas = document.createElement('canvas');
+    patchCanvas.width = frame.dims.width;
+    patchCanvas.height = frame.dims.height;
+    patchCanvas.getContext('2d').putImageData(patch, 0, 0);
+    ctx.drawImage(patchCanvas, frame.dims.left, frame.dims.top);
+
+    // Snapshot composite as this frame's canvas
+    const snapshot = document.createElement('canvas');
+    snapshot.width = w;
+    snapshot.height = h;
+    snapshot.getContext('2d').drawImage(composite, 0, 0);
+    cachedFrames.push({ canvas: snapshot, timeMs });
+
+    const delay = Math.max(20, frame.delay || 100);
+    timeMs += delay;
+
+    // Apply disposal
+    if (frame.disposalType === 2) {
+      // Restore to background (clear)
+      ctx.clearRect(frame.dims.left, frame.dims.top, frame.dims.width, frame.dims.height);
+    } else if (frame.disposalType === 3 && backupCanvas) {
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(backupCanvas, 0, 0);
+    }
+  }
+
+  return { cachedFrames, nativeDurationMs: timeMs };
+}
+
+// ---------- Tile grid ----------
+function addTileToGrid(tile) {
+  const el = document.createElement('div');
+  el.className = `frame-tile decoding tile-${tile.type}`;
+  el.dataset.id = tile.id;
+
+  let extras = '';
+  if (tile.type === 'video' || tile.type === 'gif') {
+    extras = `
+      <div class="tile-play"><svg viewBox="0 0 12 12"><polygon points="3,2 10,6 3,10" fill="currentColor"/></svg></div>
+      <div class="tile-duration">...</div>
+    `;
+  }
+
+  el.innerHTML = `
     <div class="frame-index"></div>
+    ${extras}
     <button class="frame-remove" title="Remove">×</button>
   `;
-  tile.querySelector('.frame-remove').addEventListener('click', (e) => {
+  el.querySelector('.frame-remove').addEventListener('click', (e) => {
     e.stopPropagation();
-    removeFrame(frame.id);
+    removeTile(tile.id);
   });
-  els.framesGrid.appendChild(tile);
+  els.framesGrid.appendChild(el);
   updateTileIndices();
 }
 
-function removeFrame(id) {
-  const idx = state.frames.findIndex(f => f.id === id);
+function removeTile(id) {
+  const idx = state.tiles.findIndex(t => t.id === id);
   if (idx < 0) return;
-  state.frames.splice(idx, 1);
-  const tile = els.framesGrid.querySelector(`[data-id="${id}"]`);
-  if (tile) tile.remove();
+  state.tiles.splice(idx, 1);
+  const el = els.framesGrid.querySelector(`[data-id="${id}"]`);
+  if (el) el.remove();
   updateTileIndices();
-  if (state.frames.length === 0) {
+  updateVfpsVisibility();
+  if (state.tiles.length === 0) {
     hideSections();
   } else {
+    rebuildPreviewSequence();
     updateSummary();
+    updateEstimate();
+    updateWarning();
   }
-  if (state.previewIdx >= state.frames.length) state.previewIdx = 0;
-  drawPreview();
 }
 
 function updateTileIndices() {
-  els.framesGrid.querySelectorAll('.frame-tile').forEach((tile, i) => {
-    tile.querySelector('.frame-index').textContent = String(i + 1).padStart(2, '0');
+  els.framesGrid.querySelectorAll('.frame-tile').forEach((el, i) => {
+    el.querySelector('.frame-index').textContent = String(i + 1).padStart(2, '0');
   });
 }
 
@@ -974,11 +1214,10 @@ new Sortable(els.framesGrid, {
   ghostClass: 'sortable-ghost',
   chosenClass: 'sortable-chosen',
   onEnd: (evt) => {
-    const [moved] = state.frames.splice(evt.oldIndex, 1);
-    state.frames.splice(evt.newIndex, 0, moved);
+    const [moved] = state.tiles.splice(evt.oldIndex, 1);
+    state.tiles.splice(evt.newIndex, 0, moved);
     updateTileIndices();
-    state.previewIdx = 0;
-    drawPreview();
+    rebuildPreviewSequence();
   }
 });
 
@@ -1000,29 +1239,39 @@ function getCanvasDims() {
     h = longest;
     w = Math.round(longest * aw / ah);
   }
-  // Keep even dims (some encoders are picky, harmless for GIF)
   w = Math.max(2, w - (w % 2));
   h = Math.max(2, h - (h % 2));
   return { w, h };
 }
 
-// ---------- Render all frames to their target canvas dims ----------
-function reflowFrames() {
+// ---------- Reflow all tiles to current canvas dims ----------
+function reflowAllTiles() {
   const { w, h } = getCanvasDims();
-  for (const frame of state.frames) {
-    if (!frame.bitmap) continue;
-    frame.renderedCanvas = renderToCanvas(frame.bitmap, w, h);
-    updateTileThumb(frame);
+
+  for (const tile of state.tiles) {
+    if (tile.status !== 'ready') continue;
+    if (tile.type === 'image') {
+      tile.renderedCanvas = renderSourceToCanvas(tile.bitmap, w, h);
+    } else {
+      tile.renderedFrames = tile.cachedFrames.map(f => ({
+        canvas: renderSourceToCanvas(f.canvas, w, h),
+        timeMs: f.timeMs,
+      }));
+    }
+    updateTilePoster(tile);
+    updateTileDurationLabel(tile);
   }
+
   els.previewCanvas.width = w;
   els.previewCanvas.height = h;
   els.metaDims.textContent = `${w}×${h}`;
-  drawPreview();
+
+  rebuildPreviewSequence();
   updateEstimate();
   updateWarning();
 }
 
-function renderToCanvas(bitmap, w, h) {
+function renderSourceToCanvas(src, w, h) {
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
@@ -1030,82 +1279,142 @@ function renderToCanvas(bitmap, w, h) {
   if (state.fit === 'contain') {
     ctx.fillStyle = BG_MAP[state.bg];
     ctx.fillRect(0, 0, w, h);
-    drawContain(ctx, bitmap, w, h);
+    drawContain(ctx, src, w, h);
   } else {
-    drawCover(ctx, bitmap, w, h);
+    drawCover(ctx, src, w, h);
   }
   return canvas;
 }
 
-function drawCover(ctx, img, cw, ch) {
-  const iw = img.width || img.naturalWidth;
-  const ih = img.height || img.naturalHeight;
+function drawCover(ctx, src, cw, ch) {
+  const iw = src.width || src.naturalWidth;
+  const ih = src.height || src.naturalHeight;
   const scale = Math.max(cw / iw, ch / ih);
   const w = iw * scale, h = ih * scale;
   const x = (cw - w) / 2, y = (ch - h) / 2;
-  ctx.drawImage(img, x, y, w, h);
+  ctx.drawImage(src, x, y, w, h);
 }
 
-function drawContain(ctx, img, cw, ch) {
-  const iw = img.width || img.naturalWidth;
-  const ih = img.height || img.naturalHeight;
+function drawContain(ctx, src, cw, ch) {
+  const iw = src.width || src.naturalWidth;
+  const ih = src.height || src.naturalHeight;
   const scale = Math.min(cw / iw, ch / ih);
   const w = iw * scale, h = ih * scale;
   const x = (cw - w) / 2, y = (ch - h) / 2;
-  ctx.drawImage(img, x, y, w, h);
+  ctx.drawImage(src, x, y, w, h);
 }
 
-function updateTileThumb(frame) {
-  const tile = els.framesGrid.querySelector(`[data-id="${frame.id}"]`);
-  if (!tile || !frame.renderedCanvas) return;
-  let img = tile.querySelector('img');
-  const url = frame.renderedCanvas.toDataURL('image/jpeg', 0.7);
+function updateTilePoster(tile) {
+  const el = els.framesGrid.querySelector(`[data-id="${tile.id}"]`);
+  if (!el) return;
+  const poster = tile.type === 'image'
+    ? tile.renderedCanvas
+    : (tile.renderedFrames && tile.renderedFrames[0] && tile.renderedFrames[0].canvas);
+  if (!poster) return;
+  let img = el.querySelector('img');
+  const url = poster.toDataURL('image/jpeg', 0.7);
   if (!img) {
     img = document.createElement('img');
-    tile.insertBefore(img, tile.firstChild);
+    el.insertBefore(img, el.firstChild);
   }
   img.src = url;
 }
 
+function updateTileDurationLabel(tile) {
+  if (tile.type === 'image') return;
+  const el = els.framesGrid.querySelector(`[data-id="${tile.id}"]`);
+  if (!el) return;
+  const label = el.querySelector('.tile-duration');
+  if (!label) return;
+  const s = (tile.nativeDurationMs / 1000).toFixed(1);
+  label.textContent = `${s}s${tile.truncated ? ' (cut)' : ''}`;
+}
+
+// ---------- Preview sequence ----------
+function rebuildPreviewSequence() {
+  const seq = [];
+  for (const tile of state.tiles) {
+    if (tile.status !== 'ready') continue;
+    if (tile.type === 'image') {
+      if (tile.renderedCanvas) seq.push({ canvas: tile.renderedCanvas, durationMs: state.duration });
+    } else {
+      const sampled = sampleVideoFrames(tile.renderedFrames || [], tile.nativeDurationMs, state.videoFps);
+      for (const f of sampled) seq.push(f);
+    }
+  }
+  state.previewSequence = seq;
+  state.previewIdx = 0;
+  state.previewElapsed = 0;
+  els.metaTotal.textContent = String(seq.length).padStart(2, '0');
+  drawPreviewFromSequence();
+  updateSummary();
+  updateEstimate();
+}
+
+function sampleVideoFrames(framesAtRendered, durationMs, outputFps) {
+  if (!framesAtRendered.length || durationMs <= 0) return [];
+  const stride = 1000 / outputFps;
+  const out = [];
+  let t = 0;
+  while (t < durationMs - 1) {
+    // Find frame closest to time t
+    let best = framesAtRendered[0];
+    let bestDist = Math.abs(best.timeMs - t);
+    for (const f of framesAtRendered) {
+      const d = Math.abs(f.timeMs - t);
+      if (d < bestDist) { best = f; bestDist = d; }
+    }
+    out.push({ canvas: best.canvas, durationMs: stride });
+    t += stride;
+  }
+  return out;
+}
+
 // ---------- Preview animation ----------
-function drawPreview() {
-  if (state.frames.length === 0) return;
-  const frame = state.frames[state.previewIdx];
-  if (!frame || !frame.renderedCanvas) return;
+function drawPreviewFromSequence() {
+  if (state.previewSequence.length === 0) {
+    const ctx = els.previewCanvas.getContext('2d');
+    ctx.clearRect(0, 0, els.previewCanvas.width, els.previewCanvas.height);
+    els.metaFrame.textContent = '00';
+    return;
+  }
+  const item = state.previewSequence[state.previewIdx];
+  if (!item) return;
   const ctx = els.previewCanvas.getContext('2d');
   ctx.clearRect(0, 0, els.previewCanvas.width, els.previewCanvas.height);
-  ctx.drawImage(frame.renderedCanvas, 0, 0);
+  ctx.drawImage(item.canvas, 0, 0);
   els.metaFrame.textContent = String(state.previewIdx + 1).padStart(2, '0');
-  els.metaTotal.textContent = String(state.frames.length).padStart(2, '0');
 }
 
 function previewTick(t) {
-  if (state.frames.length > 0) {
-    if (!state.previewLastSwitch) state.previewLastSwitch = t;
-    if (t - state.previewLastSwitch >= state.duration) {
-      state.previewIdx = (state.previewIdx + 1) % state.frames.length;
-      state.previewLastSwitch = t;
-      drawPreview();
+  if (state.previewSequence.length > 0) {
+    if (!state.previewLastT) state.previewLastT = t;
+    const dt = t - state.previewLastT;
+    state.previewLastT = t;
+    state.previewElapsed += dt;
+    const current = state.previewSequence[state.previewIdx];
+    if (current && state.previewElapsed >= current.durationMs) {
+      state.previewElapsed = 0;
+      state.previewIdx = (state.previewIdx + 1) % state.previewSequence.length;
+      drawPreviewFromSequence();
     }
   } else {
-    state.previewLastSwitch = 0;
+    state.previewLastT = 0;
   }
   requestAnimationFrame(previewTick);
 }
 requestAnimationFrame(previewTick);
 
-// ---------- Estimate and summary ----------
+// ---------- Estimate / summary / warning ----------
 function updateEstimate() {
-  if (state.frames.length === 0) {
+  if (state.previewSequence.length === 0) {
     setEstimate(0);
     return;
   }
   const { w, h } = getCanvasDims();
   const q = QUALITY_MAP[state.quality];
-  // Rough heuristic: GIF size ≈ frames * pixels * bytesPerPixel * compressionFactor
-  // bytesPerPixel ≈ bppEst/8, compressionFactor ≈ 0.6 (typical LZW on indexed)
   const bpp = q.bppEst / 8;
-  const bytes = state.frames.length * w * h * bpp * 0.6;
+  const bytes = state.previewSequence.length * w * h * bpp * 0.6;
   setEstimate(bytes);
 }
 
@@ -1117,20 +1426,36 @@ function setEstimate(bytes) {
 }
 
 function updateSummary() {
-  els.statFrames.textContent = String(state.frames.length).padStart(2, '0');
-  const loopSec = (state.frames.length * state.duration / 1000);
-  els.statLoop.textContent = `${loopSec.toFixed(1)}s`;
-  els.metaLoop.textContent = loopSec.toFixed(1);
-  els.downloadBtn.disabled = state.frames.length === 0 || state.encoding;
+  els.statTiles.textContent = String(state.tiles.length).padStart(2, '0');
+  let loopMs = 0;
+  for (const item of state.previewSequence) loopMs += item.durationMs;
+  els.statLoop.textContent = `${(loopMs / 1000).toFixed(1)}s`;
+  els.metaLoop.textContent = (loopMs / 1000).toFixed(1);
+  const anyReady = state.tiles.some(t => t.status === 'ready');
+  els.downloadBtn.disabled = !anyReady || state.encoding || state.previewSequence.length === 0;
 }
 
 function updateWarning() {
-  if (state.frames.length > 60) {
+  const messages = [];
+  if (state.previewSequence.length > 100) {
+    messages.push(`${state.previewSequence.length} encoded frames is a lot. The GIF will be chunky. Consider fewer tiles or a lower video playback fps.`);
+  }
+  const anyTruncated = state.tiles.some(t => t.truncated);
+  if (anyTruncated) {
+    messages.push('One or more videos were longer than 8 seconds and were trimmed to fit.');
+  }
+  if (messages.length) {
     els.warning.classList.remove('hidden');
-    els.warning.textContent = `${state.frames.length} frames is a lot. GIFs get chunky past 60 or so. Consider trimming.`;
+    els.warning.textContent = messages.join(' ');
   } else {
     els.warning.classList.add('hidden');
   }
+}
+
+function updateVfpsVisibility() {
+  const hasMotion = state.tiles.some(t => t.type === 'video' || t.type === 'gif');
+  els.vfpsControl.classList.toggle('hidden', !hasMotion);
+  els.controlsRow2.classList.toggle('no-vfps', !hasMotion);
 }
 
 // ---------- Section visibility ----------
@@ -1145,23 +1470,28 @@ function hideSections() {
   els.summary.classList.add('hidden');
   els.warning.classList.add('hidden');
   els.drop.classList.remove('compact');
-  els.dropH.textContent = 'Drop your images here';
-  els.dropP.innerHTML = 'Or <strong>click anywhere</strong> in this box. Order matters, drag to rearrange afterwards. JPEG, PNG, WebP, HEIC.';
+  els.dropH.textContent = 'Drop your images, videos or GIFs here';
+  els.dropP.innerHTML = 'Or <strong>click anywhere</strong> in this box. Order matters, drag tiles to rearrange afterwards. Stills, MP4 and GIF all welcome.';
+  updateVfpsVisibility();
 }
 
 // ---------- Clear ----------
 els.clearBtn.addEventListener('click', () => {
-  for (const f of state.frames) { if (f.bitmap && f.bitmap.close) f.bitmap.close(); }
-  state.frames = [];
+  for (const t of state.tiles) {
+    if (t.bitmap && t.bitmap.close) t.bitmap.close();
+  }
+  state.tiles = [];
   els.framesGrid.innerHTML = '';
+  state.previewSequence = [];
   state.previewIdx = 0;
-  state.previewLastSwitch = 0;
+  state.previewElapsed = 0;
+  state.previewLastT = 0;
   hideSections();
 });
 
 // ---------- Encode ----------
 els.downloadBtn.addEventListener('click', async () => {
-  if (state.encoding || state.frames.length === 0) return;
+  if (state.encoding || state.previewSequence.length === 0) return;
   state.encoding = true;
   const originalText = els.downloadBtn.textContent;
   els.downloadBtn.disabled = true;
@@ -1171,15 +1501,16 @@ els.downloadBtn.addEventListener('click', async () => {
     const gif = GIFEncoder();
     const q = QUALITY_MAP[state.quality];
     const { w, h } = getCanvasDims();
+    const seq = state.previewSequence;
 
-    for (let i = 0; i < state.frames.length; i++) {
-      els.downloadBtn.textContent = `Encoding ${Math.round(((i) / state.frames.length) * 100)}%`;
-      const canvas = state.frames[i].renderedCanvas;
+    for (let i = 0; i < seq.length; i++) {
+      els.downloadBtn.textContent = `Encoding ${Math.round((i / seq.length) * 100)}%`;
+      const canvas = seq[i].canvas;
       const ctx = canvas.getContext('2d');
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const palette = quantize(imageData.data, q.palette);
       const index = applyPalette(imageData.data, palette);
-      const opts = { palette, delay: state.duration };
+      const opts = { palette, delay: seq[i].durationMs };
       if (i === 0) { opts.first = true; opts.repeat = 0; }
       gif.writeFrame(index, w, h, opts);
       await new Promise(r => setTimeout(r, 0));
@@ -1188,7 +1519,7 @@ els.downloadBtn.addEventListener('click', async () => {
     gif.finish();
     const buffer = gif.bytes();
     const blob = new Blob([buffer], { type: 'image/gif' });
-    setEstimate(blob.size); // replace estimate with real size
+    setEstimate(blob.size);
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1205,7 +1536,7 @@ els.downloadBtn.addEventListener('click', async () => {
     els.downloadBtn.textContent = originalText;
     els.clearBtn.disabled = false;
     state.encoding = false;
-    els.downloadBtn.disabled = state.frames.length === 0;
+    updateSummary();
   }
 });
 

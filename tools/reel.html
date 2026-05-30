@@ -152,7 +152,18 @@
     margin-top: 4px;
   }
   .controls-row2 { grid-template-columns: 1.6fr 0.8fr 0.8fr 0.8fr; }
-  .controls-row3 { grid-template-columns: 1fr 1fr 1fr; }
+  .controls-row3 { grid-template-columns: 2fr 1fr 1fr; }
+
+  .direction-row {
+    margin-top: 8px;
+    display: none;
+  }
+  .direction-row.show { display: block; }
+  .direction-row .seg button {
+    padding: 6px 10px;
+    font-size: 14px;
+    letter-spacing: 0;
+  }
 
   .control label {
     display: block;
@@ -686,7 +697,19 @@
         <label>Transition</label>
         <div class="seg" id="transition-seg">
           <button data-val="cut" class="active">Cut</button>
-          <button data-val="crossfade">Crossfade</button>
+          <button data-val="fade">Fade</button>
+          <button data-val="slide">Slide</button>
+          <button data-val="push">Push</button>
+          <button data-val="zoom">Zoom</button>
+          <button data-val="blur">Blur</button>
+        </div>
+        <div class="direction-row" id="direction-row">
+          <div class="seg" id="direction-seg">
+            <button data-val="left" class="active">←</button>
+            <button data-val="right">→</button>
+            <button data-val="up">↑</button>
+            <button data-val="down">↓</button>
+          </div>
         </div>
       </div>
       <div class="control">
@@ -794,7 +817,8 @@ const state = {
   quality: 'balanced',
   duration: 500,
   videoSpeed: 1,         // 0.5 = half speed, 1 = real time, 2 = double speed
-  transition: 'cut',     // 'cut' | 'crossfade'
+  transition: 'cut',     // 'cut' | 'fade' | 'slide' | 'push' | 'zoom' | 'blur'
+  direction: 'left',     // 'left' | 'right' | 'up' | 'down' (slide/push only)
   loop: 'oneway',        // 'oneway' | 'pingpong'
   holdEnds: false,
   previewSequence: [],   // [{ canvas, durationMs }]
@@ -816,7 +840,10 @@ const VIDEO_MAX_SECONDS = 8;     // auto-trim videos longer than this
 const VIDEO_MAX_FRAMES = VIDEO_INTERNAL_FPS * VIDEO_MAX_SECONDS;
 const VIDEO_FRAME_DELAY_MS = 1000 / VIDEO_INTERNAL_FPS;
 const VIDEO_CAPTURE_MAX_DIM = 720;
-const CROSSFADE_FRAMES = 3;
+const TRANSITION_FRAMES = { fade: 5, slide: 6, push: 6, zoom: 5, blur: 5 };
+const BLUR_PEAK_PX = 12;
+const ZOOM_AMPLITUDE = 0.2;     // 20% scale change during zoom transition
+const PUSH_OVERSHOOT = 1.7;     // spring overshoot factor for push
 
 let nextId = 1;
 
@@ -839,6 +866,8 @@ const els = {
   durationVal: document.getElementById('duration-val'),
   vspeedSeg: document.getElementById('vspeed-seg'),
   transitionSeg: document.getElementById('transition-seg'),
+  directionRow: document.getElementById('direction-row'),
+  directionSeg: document.getElementById('direction-seg'),
   loopSeg: document.getElementById('loop-seg'),
   holdSeg: document.getElementById('hold-seg'),
   warning: document.getElementById('warning'),
@@ -895,7 +924,14 @@ wireSeg(els.vspeedSeg, (v) => {
 });
 wireSeg(els.transitionSeg, (v) => {
   state.transition = v;
+  els.directionRow.classList.toggle('show', v === 'slide' || v === 'push');
   rebuildPreviewSequence();
+});
+wireSeg(els.directionSeg, (v) => {
+  state.direction = v;
+  if (state.transition === 'slide' || state.transition === 'push') {
+    rebuildPreviewSequence();
+  }
 });
 wireSeg(els.loopSeg, (v) => {
   state.loop = v;
@@ -1371,7 +1407,7 @@ function updateTileDurationLabel(tile) {
 // ---------- Preview sequence ----------
 function rebuildPreviewSequence() {
   // 1. Build tile-level segments. Each segment is a contiguous run of frames
-  //    plus its visible first and last frame canvases (used for crossfades).
+  //    plus its visible first and last frame canvases (used for transitions).
   const segments = [];
   for (const tile of state.tiles) {
     if (tile.status !== 'ready') continue;
@@ -1391,15 +1427,15 @@ function rebuildPreviewSequence() {
     }
   }
 
-  // 2. Concatenate, inserting crossfade frames between segments if requested.
+  // 2. Concatenate, inserting transition frames between segments if requested.
   //    Crossfades only happen at tile boundaries, not between consecutive
   //    frames within a single video tile.
   let seq = [];
   const { w, h } = getCanvasDims();
   for (let i = 0; i < segments.length; i++) {
     seq.push(...segments[i].frames);
-    if (state.transition === 'crossfade' && i < segments.length - 1) {
-      seq.push(...buildCrossfadeFrames(segments[i].lastFrame, segments[i+1].firstFrame, CROSSFADE_FRAMES, w, h));
+    if (state.transition !== 'cut' && i < segments.length - 1) {
+      seq.push(...buildTransitionFrames(segments[i].lastFrame, segments[i+1].firstFrame, w, h));
     }
   }
 
@@ -1435,20 +1471,147 @@ function expandVideoFrames(framesAtRendered) {
   return framesAtRendered.map(f => ({ canvas: f.canvas, durationMs: delay }));
 }
 
-function buildCrossfadeFrames(canvasA, canvasB, count, w, h) {
-  // Alpha-blend last frame of A toward first frame of B in `count` steps.
-  // Each intermediate is held for one video-frame's worth of time.
+// ---------- Easing curves ----------
+function easeInOut(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+function easeOut(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+function easeSpring(t) {
+  // Cubic back-easing with overshoot (decelerating, peak past 1 then settles)
+  const c = PUSH_OVERSHOOT;
+  const c1 = c + 1;
+  return 1 + c1 * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2);
+}
+
+function mkCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  return c;
+}
+
+// ---------- Transition builders ----------
+function buildTransitionFrames(A, B, w, h) {
+  switch (state.transition) {
+    case 'fade':  return buildFadeFrames(A, B, w, h);
+    case 'slide': return buildSlideFrames(A, B, state.direction, w, h);
+    case 'push':  return buildPushFrames(A, B, state.direction, w, h);
+    case 'zoom':  return buildZoomFrames(A, B, w, h);
+    case 'blur':  return buildBlurFrames(A, B, w, h);
+    default:      return [];
+  }
+}
+
+function buildFadeFrames(A, B, w, h) {
   const out = [];
+  const count = TRANSITION_FRAMES.fade;
   for (let i = 1; i <= count; i++) {
-    const alpha = i / (count + 1);
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
+    const t = easeInOut(i / (count + 1));
+    const canvas = mkCanvas(w, h);
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(canvasA, 0, 0);
-    ctx.globalAlpha = alpha;
-    ctx.drawImage(canvasB, 0, 0);
-    ctx.globalAlpha = 1.0;
+    ctx.drawImage(A, 0, 0);
+    ctx.globalAlpha = t;
+    ctx.drawImage(B, 0, 0);
+    ctx.globalAlpha = 1;
+    out.push({ canvas, durationMs: VIDEO_FRAME_DELAY_MS });
+  }
+  return out;
+}
+
+function buildSlideFrames(A, B, dir, w, h) {
+  const out = [];
+  const count = TRANSITION_FRAMES.slide;
+  for (let i = 1; i <= count; i++) {
+    const t = easeOut(i / (count + 1));
+    let aX = 0, aY = 0, bX = 0, bY = 0;
+    if (dir === 'left')  { aX = -w * t;     bX =  w * (1 - t); }
+    if (dir === 'right') { aX =  w * t;     bX = -w * (1 - t); }
+    if (dir === 'up')    { aY = -h * t;     bY =  h * (1 - t); }
+    if (dir === 'down')  { aY =  h * t;     bY = -h * (1 - t); }
+    const canvas = mkCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(A, aX, aY);
+    ctx.drawImage(B, bX, bY);
+    out.push({ canvas, durationMs: VIDEO_FRAME_DELAY_MS });
+  }
+  return out;
+}
+
+function buildPushFrames(A, B, dir, w, h) {
+  // Same geometry as slide but with spring easing so the new tile settles in
+  // with a touch of overshoot. Gives it tactile momentum.
+  const out = [];
+  const count = TRANSITION_FRAMES.push;
+  for (let i = 1; i <= count; i++) {
+    const tRaw = i / (count + 1);
+    // easeSpring can return >1; clamp displacement so we don't overrun into
+    // empty canvas for too long, but allow a small overshoot.
+    const t = Math.min(1.05, Math.max(0, easeSpring(tRaw)));
+    let aX = 0, aY = 0, bX = 0, bY = 0;
+    if (dir === 'left')  { aX = -w * t;     bX =  w * (1 - t); }
+    if (dir === 'right') { aX =  w * t;     bX = -w * (1 - t); }
+    if (dir === 'up')    { aY = -h * t;     bY =  h * (1 - t); }
+    if (dir === 'down')  { aY =  h * t;     bY = -h * (1 - t); }
+    const canvas = mkCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(A, aX, aY);
+    ctx.drawImage(B, bX, bY);
+    out.push({ canvas, durationMs: VIDEO_FRAME_DELAY_MS });
+  }
+  return out;
+}
+
+function buildZoomFrames(A, B, w, h) {
+  // A scales up slightly and fades out. B scales up from smaller and fades in.
+  // Both centred. Cubic ease-in-out.
+  const out = [];
+  const count = TRANSITION_FRAMES.zoom;
+  for (let i = 1; i <= count; i++) {
+    const t = easeInOut(i / (count + 1));
+    const canvas = mkCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+
+    // A: zoom past camera, fade out
+    const aScale = 1 + ZOOM_AMPLITUDE * t;
+    drawCenteredScaled(ctx, A, aScale, 1 - t, w, h);
+
+    // B: zoom in from far, fade in
+    const bScale = (1 - ZOOM_AMPLITUDE) + ZOOM_AMPLITUDE * t;
+    drawCenteredScaled(ctx, B, bScale, t, w, h);
+
+    out.push({ canvas, durationMs: VIDEO_FRAME_DELAY_MS });
+  }
+  return out;
+}
+
+function drawCenteredScaled(ctx, src, scale, alpha, w, h) {
+  const sw = w * scale;
+  const sh = h * scale;
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(src, (w - sw) / 2, (h - sh) / 2, sw, sh);
+  ctx.globalAlpha = 1;
+}
+
+function buildBlurFrames(A, B, w, h) {
+  // Crossfade with a blur peak in the middle. Canvas filter blur is supported
+  // in modern browsers and is hardware-accelerated.
+  const out = [];
+  const count = TRANSITION_FRAMES.blur;
+  for (let i = 1; i <= count; i++) {
+    const tRaw = i / (count + 1);
+    const t = easeInOut(tRaw);
+    // Blur arc: 0 -> peak (at tRaw 0.5) -> 0
+    const blur = Math.sin(tRaw * Math.PI) * BLUR_PEAK_PX;
+    const canvas = mkCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    ctx.filter = `blur(${blur}px)`;
+    ctx.drawImage(A, 0, 0);
+    ctx.globalAlpha = t;
+    ctx.drawImage(B, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.filter = 'none';
     out.push({ canvas, durationMs: VIDEO_FRAME_DELAY_MS });
   }
   return out;

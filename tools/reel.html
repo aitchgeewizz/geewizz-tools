@@ -561,7 +561,29 @@
   }
   .summary-stat .value.accent { color: var(--accent-light); }
 
-  .actions { display: flex; gap: 8px; }
+  .actions { display: flex; gap: 8px; align-items: center; }
+
+  /* Format toggle sits in the dark summary bar, override seg styling */
+  .format-toggle.seg {
+    background: transparent;
+    border-color: var(--ink-faint);
+    margin-right: 4px;
+  }
+  .format-toggle.seg button {
+    color: var(--bg-card);
+    padding: 8px 12px;
+  }
+  .format-toggle.seg button.active {
+    background: var(--bg-card);
+    color: var(--ink);
+  }
+  .format-toggle.seg button:hover:not(.active):not(:disabled) {
+    color: var(--accent-light);
+  }
+  .format-toggle.seg button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
 
   .btn {
     padding: 12px 20px;
@@ -798,6 +820,10 @@
       </div>
     </div>
     <div class="actions">
+      <div class="format-toggle seg" id="format-seg">
+        <button data-val="gif" class="active">GIF</button>
+        <button data-val="mp4" id="format-mp4-btn">MP4</button>
+      </div>
       <button class="btn ghost" id="clear-btn">Clear</button>
       <button class="btn" id="download-btn" disabled>Download .gif</button>
     </div>
@@ -812,6 +838,7 @@
 <script type="module">
 import { GIFEncoder, quantize, applyPalette } from 'https://cdn.jsdelivr.net/npm/gifenc@1.0.3/+esm';
 import { parseGIF, decompressFrames } from 'https://cdn.jsdelivr.net/npm/gifuct-js@2.1.2/+esm';
+import { Muxer, ArrayBufferTarget } from 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/+esm';
 
 // ---------- State ----------
 const state = {
@@ -829,6 +856,8 @@ const state = {
   loop: 'oneway',        // 'oneway' | 'pingpong'
   holdEnds: false,
   kenBurns: false,
+  format: 'gif',         // 'gif' | 'mp4'
+  mp4Supported: false,   // set on init via WebCodecs probe
   previewSequence: [],   // [{ canvas, durationMs }]
   previewIdx: 0,
   previewElapsed: 0,
@@ -838,9 +867,9 @@ const state = {
 
 const SIZE_MAP = { small: 320, medium: 540, large: 720 };
 const QUALITY_MAP = {
-  punchy:    { palette: 32,  bppEst: 5 },
-  balanced:  { palette: 128, bppEst: 6 },
-  pristine:  { palette: 256, bppEst: 7 },
+  punchy:    { palette: 32,  bppEst: 5, mp4Bitrate: 1_000_000 },
+  balanced:  { palette: 128, bppEst: 6, mp4Bitrate: 3_000_000 },
+  pristine:  { palette: 256, bppEst: 7, mp4Bitrate: 6_000_000 },
 };
 const BG_MAP = { cream: '#f4efe6', white: '#ffffff', black: '#1a1816' };
 const VIDEO_INTERNAL_FPS = 10;   // playback rate for video tiles. Trade-off: smoothness vs file size.
@@ -908,6 +937,8 @@ const els = {
   statSize: document.getElementById('stat-size'),
   clearBtn: document.getElementById('clear-btn'),
   downloadBtn: document.getElementById('download-btn'),
+  formatSeg: document.getElementById('format-seg'),
+  formatMp4Btn: document.getElementById('format-mp4-btn'),
 };
 
 // ---------- Segmented button wiring ----------
@@ -965,6 +996,17 @@ wireSeg(els.holdSeg, (v) => {
 wireSeg(els.kenburnsSeg, (v) => {
   state.kenBurns = v === 'on';
   rebuildPreviewSequence();
+});
+
+// Format toggle wiring (custom since we need to block MP4 if unsupported)
+els.formatSeg.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn || btn.disabled) return;
+  els.formatSeg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.format = btn.dataset.val;
+  updateDownloadButtonLabel();
+  updateEstimate();
 });
 
 els.bgSwatches.addEventListener('click', (e) => {
@@ -1724,11 +1766,23 @@ function updateEstimate() {
     setEstimate(0);
     return;
   }
-  const { w, h } = getCanvasDims();
-  const q = QUALITY_MAP[state.quality];
-  const bpp = q.bppEst / 8;
-  const bytes = state.previewSequence.length * w * h * bpp * 0.6;
-  setEstimate(bytes);
+  if (state.format === 'mp4') {
+    // Bitrate * duration / 8 = bytes. Roughly accurate within 20%.
+    const totalMs = state.previewSequence.reduce((s, x) => s + x.durationMs, 0);
+    const bytes = (QUALITY_MAP[state.quality].mp4Bitrate * totalMs / 1000) / 8;
+    setEstimate(bytes);
+  } else {
+    const { w, h } = getCanvasDims();
+    const q = QUALITY_MAP[state.quality];
+    const bpp = q.bppEst / 8;
+    const bytes = state.previewSequence.length * w * h * bpp * 0.6;
+    setEstimate(bytes);
+  }
+}
+
+function updateDownloadButtonLabel() {
+  const ext = state.format === 'mp4' ? '.mp4' : '.gif';
+  if (!state.encoding) els.downloadBtn.textContent = `Download ${ext}`;
 }
 
 function setEstimate(bytes) {
@@ -1801,52 +1855,133 @@ els.clearBtn.addEventListener('click', () => {
 els.downloadBtn.addEventListener('click', async () => {
   if (state.encoding || state.previewSequence.length === 0) return;
   state.encoding = true;
-  const originalText = els.downloadBtn.textContent;
   els.downloadBtn.disabled = true;
   els.clearBtn.disabled = true;
 
   try {
-    const gif = GIFEncoder();
-    const q = QUALITY_MAP[state.quality];
-    const { w, h } = getCanvasDims();
-    const seq = state.previewSequence;
-
-    for (let i = 0; i < seq.length; i++) {
-      els.downloadBtn.textContent = `Encoding ${Math.round((i / seq.length) * 100)}%`;
-      const canvas = seq[i].canvas;
-      const ctx = canvas.getContext('2d');
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const palette = quantize(imageData.data, q.palette);
-      const index = applyPalette(imageData.data, palette);
-      const opts = { palette, delay: seq[i].durationMs };
-      if (i === 0) { opts.first = true; opts.repeat = 0; }
-      gif.writeFrame(index, w, h, opts);
-      await new Promise(r => setTimeout(r, 0));
+    if (state.format === 'mp4') {
+      await encodeMp4();
+    } else {
+      await encodeGif();
     }
-
-    gif.finish();
-    const buffer = gif.bytes();
-    const blob = new Blob([buffer], { type: 'image/gif' });
-    setEstimate(blob.size);
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `reel-${stamp()}.gif`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (err) {
     console.error(err);
     alert('Encoding failed: ' + (err.message || err));
   } finally {
-    els.downloadBtn.textContent = originalText;
     els.clearBtn.disabled = false;
     state.encoding = false;
+    updateDownloadButtonLabel();
     updateSummary();
   }
 });
+
+async function encodeGif() {
+  const gif = GIFEncoder();
+  const q = QUALITY_MAP[state.quality];
+  const { w, h } = getCanvasDims();
+  const seq = state.previewSequence;
+
+  for (let i = 0; i < seq.length; i++) {
+    els.downloadBtn.textContent = `Encoding ${Math.round((i / seq.length) * 100)}%`;
+    const canvas = seq[i].canvas;
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const palette = quantize(imageData.data, q.palette);
+    const index = applyPalette(imageData.data, palette);
+    const opts = { palette, delay: seq[i].durationMs };
+    if (i === 0) { opts.first = true; opts.repeat = 0; }
+    gif.writeFrame(index, w, h, opts);
+    await new Promise(r => setTimeout(r, 0));
+  }
+
+  gif.finish();
+  const blob = new Blob([gif.bytes()], { type: 'image/gif' });
+  setEstimate(blob.size);
+  downloadBlob(blob, `reel-${stamp()}.gif`);
+}
+
+async function encodeMp4() {
+  if (!state.mp4Supported) throw new Error('MP4 export not supported in this browser');
+
+  const { w, h } = getCanvasDims();
+  const seq = state.previewSequence;
+  const bitrate = QUALITY_MAP[state.quality].mp4Bitrate;
+
+  const muxer = new Muxer({
+    target: new ArrayBufferTarget(),
+    video: {
+      codec: 'avc',
+      width: w,
+      height: h,
+      frameRate: VIDEO_INTERNAL_FPS,
+    },
+    fastStart: 'in-memory',
+  });
+
+  let encodeError = null;
+  const encoder = new VideoEncoder({
+    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    error: (e) => { encodeError = e; },
+  });
+
+  encoder.configure({
+    codec: 'avc1.42001f',  // H.264 Baseline level 3.1, broadest compatibility
+    width: w,
+    height: h,
+    bitrate,
+    framerate: VIDEO_INTERNAL_FPS,
+  });
+
+  let timestampUs = 0;
+  for (let i = 0; i < seq.length; i++) {
+    if (encodeError) throw encodeError;
+    els.downloadBtn.textContent = `Encoding ${Math.round((i / seq.length) * 100)}%`;
+    const item = seq[i];
+    const frame = new VideoFrame(item.canvas, {
+      timestamp: timestampUs,
+      duration: item.durationMs * 1000,
+    });
+    encoder.encode(frame, { keyFrame: i % 30 === 0 });
+    frame.close();
+    timestampUs += item.durationMs * 1000;
+    if (i % 5 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+
+  await encoder.flush();
+  if (encodeError) throw encodeError;
+  muxer.finalize();
+
+  const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
+  setEstimate(blob.size);
+  downloadBlob(blob, `reel-${stamp()}.mp4`);
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function checkMp4Support() {
+  if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') return false;
+  try {
+    const support = await VideoEncoder.isConfigSupported({
+      codec: 'avc1.42001f',
+      width: 720,
+      height: 720,
+      bitrate: 3_000_000,
+      framerate: VIDEO_INTERNAL_FPS,
+    });
+    return support.supported === true;
+  } catch {
+    return false;
+  }
+}
 
 // ---------- Helpers ----------
 function clampInt(v, min, max, fallback) {
@@ -1869,6 +2004,15 @@ function stamp() {
 // Initial UI state
 updateSummary();
 updateEstimate();
+
+// Probe MP4 support and disable the toggle button if WebCodecs missing
+checkMp4Support().then(ok => {
+  state.mp4Supported = ok;
+  if (!ok) {
+    els.formatMp4Btn.disabled = true;
+    els.formatMp4Btn.title = "This browser can't export MP4. Try Chrome, Edge, or Safari 16+. GIF works everywhere.";
+  }
+});
 </script>
 
 </body>

@@ -1202,10 +1202,12 @@ async function decodeVideoFile(file) {
     throw new Error('Could not read video duration');
   }
 
-  const idealFrameCount = Math.round(nativeDuration * VIDEO_INTERNAL_FPS);
-  const frameCount = Math.min(idealFrameCount, VIDEO_MAX_FRAMES);
-  const stride = nativeDuration / frameCount;
-  const truncated = frameCount < idealFrameCount;
+  // Always sample at the natural 0.1s stride so playback is real-time.
+  // Trim sources longer than VIDEO_MAX_SECONDS to the first slot-worth.
+  const cappedDuration = Math.min(nativeDuration, VIDEO_MAX_SECONDS);
+  const stride = 1 / VIDEO_INTERNAL_FPS;   // 0.1s, fixed
+  const frameCount = Math.round(cappedDuration * VIDEO_INTERNAL_FPS);
+  const truncated = nativeDuration > VIDEO_MAX_SECONDS;
 
   const vw = videoEl.videoWidth;
   const vh = videoEl.videoHeight;
@@ -1226,8 +1228,7 @@ async function decodeVideoFile(file) {
 
   URL.revokeObjectURL(videoEl.src);
 
-  const effectiveDurationMs = frameCount * stride * 1000;
-  return { cachedFrames, nativeDurationMs: effectiveDurationMs, truncated };
+  return { cachedFrames, nativeDurationMs: frameCount * stride * 1000, truncated };
 }
 
 function seekVideoTo(videoEl, t) {

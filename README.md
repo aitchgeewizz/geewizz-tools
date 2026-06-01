@@ -7,7 +7,8 @@ Live at [tools.geewizz.com.au](https://tools.geewizz.com.au) (when DNS is set up
 ## What's in here
 
 - **Squish** — drag images in, get small ones out. Compress before emailing or uploading. Runs entirely in your browser.
-- **Frame, Swap, Voice** — coming soon.
+- **Reel** — drop images, MP4s or GIFs. Sequence them, time them, add transitions or Ken Burns, download a looping GIF or an MP4. Built for quick showcase reels. Six transition styles, ping-pong, hold ends, separate timing for stills and clips.
+- **Swap, Voice** — coming soon.
 
 Each tool is a single self-contained HTML file. Open one in a browser, it works. Save it to your desktop and double-click, it still works.
 
@@ -45,13 +46,18 @@ Design tokens live in `shared/tokens.css`. Tools duplicate them inline so each f
 
 ## Tech
 
-- HTML, CSS, vanilla JS
-- No framework, no build step
+- HTML, CSS, vanilla JS. No framework, no build step.
 - Google Fonts for typography
-- JSZip via CDN for archive downloads
-- ffmpeg.wasm via CDN for any future video tools
-- Anthropic SDK via CDN for AI tools
+- JSZip via CDN for archive downloads (Squish)
+- gifenc + gifuct-js via CDN for GIF encode and decode (Reel)
+- mp4-muxer + native WebCodecs for MP4 encode (Reel)
+- SortableJS via CDN for tile reordering (Reel)
+- Anthropic SDK via CDN planned for AI tools (Voice)
 - Hosted on Vercel
+
+### CDN gotcha
+
+If you fork and add a new tool that imports JS from a CDN, prefer `https://cdn.jsdelivr.net/npm/<pkg>/+esm` over `https://esm.sh/<pkg>`. The esm.sh build for some packages only re-exports the default, which silently breaks named imports and produces a module that fails to link. jsdelivr's `+esm` preserves named exports.
 
 ## Suggesting a tool
 

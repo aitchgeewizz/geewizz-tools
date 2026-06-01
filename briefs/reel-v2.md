@@ -9,6 +9,20 @@ Shipped in three stages so each can be tested before the next lands.
 
 ---
 
+## What actually shipped (post-implementation summary)
+
+Status: **shipped**. A few things diverged from the original plan during implementation. Headline differences:
+
+- **No "Video playback fps" control.** Originally proposed but removed during Stage 1 iteration. Videos always play at real-time (1x) at a fixed 10 fps internal rate.
+- **Video speed segmented control** was added later, then removed in favour of the unified-then-split tile duration model below.
+- **Tile duration model evolved.** Final shape: two separate sliders, `Image duration` and `Video duration`, both 0.1s-5.0s. Stills hold for their slider; videos play at real-time for their slider duration, with the last frame held to fill the slot if the video is shorter and a trim if longer.
+- **Source video cap** reduced from 8s to 5s to match the slider max.
+- **Motion polish (Stage 2.5) was added.** Six transitions (Cut, Fade, Slide, Push, Zoom, Blur) with proper easing baked in, plus Ken Burns slow pan + zoom on still tiles.
+
+The rest landed close to plan. See sections below for the original brief content, kept as historical reference.
+
+---
+
 ## Architecture change: tiles can be images or videos
 
 In v1, every frame was an image rendered to a canvas at the target size and aspect. In v2 the frame list becomes a tile list, and tiles come in two kinds:
@@ -122,15 +136,18 @@ Different formula: `bitrate × duration / 8`. Roughly accurate within 20%.
 
 ## v3 parking lot
 
-Holding back so v2 ships:
-- Ken Burns slow zoom on each image
-- Slide-in transitions with direction control
-- Per-frame duration overrides
-- Target size mode for GIF
-- Reverse toggle
-- Trim controls for video tiles
-- WebCodecs decode for MP4 input (faster than video-element seeking)
-- A separate Slice tool for extracting individual frames from a video (different product, different brief)
+Updated after v2 shipped. Crossed-out items have already landed.
+
+- ~~Ken Burns slow zoom on each image~~ (shipped in Stage 2.5b)
+- ~~Slide-in transitions with direction control~~ (shipped in Stage 2.5a, plus Push, Zoom, Blur)
+- **Per-tile duration overrides** (each tile its own duration in addition to the global Image / Video sliders)
+- **Per-tile Ken Burns direction picker** (override the deterministic move pattern)
+- **Per-tile transition overrides** (different transition between specific pairs)
+- **Trim controls for video tiles** (pick which portion of a long video to include rather than just the first 5s)
+- **Target size mode for GIF** (type "3 MB", tool iterates settings to hit it)
+- **Reverse toggle** (whole reel plays backward)
+- **WebCodecs decode for MP4 input** (faster than the current video-element seeking)
+- **Slice** as a separate tool (extracts every frame from a video, different product entirely)
 
 ---
 

@@ -54,14 +54,22 @@ For video / GIF tiles, the anchor applies to each cached frame uniformly.
 
 ---
 
-## Stage 2 (parking lot — not in this brief)
+## Stage 2: Per-tile duration override (shipped)
+
+A per-tile duration slider was added to the sidebar built in Stage 1. Lets each tile set its own time independent of the global Image / Video sliders.
+
+- Slider sits at the bottom of the sidebar, same 0.1s-5.0s range as the globals
+- Defaults to the global value for the tile's type (image vs video / gif)
+- Moving the slider sets `tile.durationOverride` (ms). A small `Reset` button appears so you can clear the override and inherit the global again.
+- When no override, dragging a global slider updates the sidebar in real time so you can see the inherited value.
+
+## Stage 3+ parking lot
 
 - Drag-to-reposition: pixel-level pan on the sidebar preview by dragging the source
 - Per-tile zoom: scale the source up before anchoring
 - Per-tile background colour (Contain only)
 - Per-tile transition overrides (which transition leads into / out of this tile)
 - Per-tile Ken Burns direction picker (override deterministic)
-- Per-tile durations (each tile its own time)
-- Trim controls for long video tiles
+- Trim controls for long video tiles (pick a portion, not just the first 5s)
 - Target filesize mode for GIF / MP4
 - Slice as a separate tool (extracts every frame from a video)

@@ -639,6 +639,42 @@
     border-color: var(--accent);
   }
 
+  .sidebar-duration-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+  .sidebar-duration-row strong {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-weight: 500;
+    font-stretch: 100%;
+    font-size: 16px;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .sidebar-duration-row .reset-btn {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    padding: 4px 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+  }
+  .sidebar-duration-row .reset-btn:hover {
+    background: var(--ink);
+    color: var(--bg-card);
+    border-color: var(--ink);
+  }
+  .sidebar-duration-row .reset-btn.hidden { display: none; }
+
   @media (max-width: 720px) {
     .frames-area { flex-direction: column; }
     .tile-sidebar { width: 100%; position: static; }
@@ -949,6 +985,15 @@
             <button data-val="8" title="Bottom-right"></button>
           </div>
         </div>
+        <div class="sidebar-control">
+          <label for="tile-duration">Duration override</label>
+          <input type="range" id="tile-duration" min="0.1" max="5.0" step="0.1" value="0.5">
+          <div class="sidebar-duration-row">
+            <strong id="tile-duration-val">0.5s</strong>
+            <span id="tile-duration-default">default 0.5s</span>
+            <button class="reset-btn hidden" id="tile-duration-reset">Reset</button>
+          </div>
+        </div>
       </aside>
     </div>
   </div>
@@ -1096,6 +1141,10 @@ const els = {
   sidebarPreview: document.getElementById('sidebar-preview'),
   tileFitSeg: document.getElementById('tile-fit-seg'),
   anchorGrid: document.getElementById('anchor-grid'),
+  tileDuration: document.getElementById('tile-duration'),
+  tileDurationVal: document.getElementById('tile-duration-val'),
+  tileDurationDefault: document.getElementById('tile-duration-default'),
+  tileDurationReset: document.getElementById('tile-duration-reset'),
 };
 
 // ---------- Segmented button wiring ----------
@@ -1187,6 +1236,7 @@ els.duration.addEventListener('input', () => {
   rebuildPreviewSequence();
   updateSummary();
   updateEstimate();
+  refreshSidebarDurationIfNeeded();
 });
 els.videoDuration.addEventListener('input', () => {
   const s = parseFloat(els.videoDuration.value);
@@ -1195,7 +1245,14 @@ els.videoDuration.addEventListener('input', () => {
   rebuildPreviewSequence();
   updateSummary();
   updateEstimate();
+  refreshSidebarDurationIfNeeded();
 });
+
+function refreshSidebarDurationIfNeeded() {
+  if (state.selectedTileId == null) return;
+  const tile = state.tiles.find(t => t.id === state.selectedTileId);
+  if (tile) syncTileDurationSidebar(tile);
+}
 
 // Initial: cover so background swatches dim
 els.bgControl.querySelector('.swatches').classList.add('disabled');
@@ -1290,7 +1347,7 @@ async function addFiles(files) {
   const newTiles = [];
   for (const { file, type } of valid) {
     const id = nextId++;
-    const tile = { id, type, file, name: file.name, status: 'decoding', fitOverride: null, anchor: 4 };
+    const tile = { id, type, file, name: file.name, status: 'decoding', fitOverride: null, anchor: 4, durationOverride: null };
     state.tiles.push(tile);
     newTiles.push(tile);
     addTileToGrid(tile);
@@ -1577,7 +1634,23 @@ function selectTile(id) {
     b.classList.toggle('active', parseInt(b.dataset.val, 10) === tile.anchor);
   });
 
+  // Sync duration controls
+  syncTileDurationSidebar(tile);
+
   drawSidebarPreview(tile);
+}
+
+function tileDefaultDurationMs(tile) {
+  return (tile.type === 'image') ? state.duration : state.videoDuration;
+}
+
+function syncTileDurationSidebar(tile) {
+  const effective = (tile.durationOverride ?? tileDefaultDurationMs(tile)) / 1000;
+  const defaultSec = tileDefaultDurationMs(tile) / 1000;
+  els.tileDuration.value = effective.toFixed(1);
+  els.tileDurationVal.textContent = `${effective.toFixed(1)}s`;
+  els.tileDurationDefault.textContent = `default ${defaultSec.toFixed(1)}s`;
+  els.tileDurationReset.classList.toggle('hidden', tile.durationOverride == null);
 }
 
 function drawSidebarPreview(tile) {
@@ -1621,6 +1694,30 @@ els.anchorGrid.addEventListener('click', (e) => {
   reflowSingleTile(tile);
   rebuildPreviewSequence();
   drawSidebarPreview(tile);
+});
+
+els.tileDuration.addEventListener('input', () => {
+  if (state.selectedTileId == null) return;
+  const tile = state.tiles.find(t => t.id === state.selectedTileId);
+  if (!tile) return;
+  const s = parseFloat(els.tileDuration.value);
+  tile.durationOverride = Math.round(s * 1000);
+  els.tileDurationVal.textContent = `${s.toFixed(1)}s`;
+  els.tileDurationReset.classList.remove('hidden');
+  rebuildPreviewSequence();
+  updateSummary();
+  updateEstimate();
+});
+
+els.tileDurationReset.addEventListener('click', () => {
+  if (state.selectedTileId == null) return;
+  const tile = state.tiles.find(t => t.id === state.selectedTileId);
+  if (!tile) return;
+  tile.durationOverride = null;
+  syncTileDurationSidebar(tile);
+  rebuildPreviewSequence();
+  updateSummary();
+  updateEstimate();
 });
 
 // ---------- Canvas dimensions ----------
@@ -1765,12 +1862,13 @@ function rebuildPreviewSequence() {
   for (const tile of state.tiles) {
     if (tile.status !== 'ready') continue;
     if (tile.type === 'image' && tile.renderedCanvas) {
+      const dur = tile.durationOverride ?? state.duration;
       let frames;
       if (state.kenBurns) {
         const { w, h } = getCanvasDims();
-        frames = buildKenBurnsFrames(tile.renderedCanvas, w, h, state.duration, tile.id);
+        frames = buildKenBurnsFrames(tile.renderedCanvas, w, h, dur, tile.id);
       } else {
-        frames = [{ canvas: tile.renderedCanvas, durationMs: state.duration }];
+        frames = [{ canvas: tile.renderedCanvas, durationMs: dur }];
       }
       segments.push({
         frames,
@@ -1778,7 +1876,8 @@ function rebuildPreviewSequence() {
         lastFrame: frames[frames.length - 1].canvas,
       });
     } else if ((tile.type === 'video' || tile.type === 'gif') && tile.renderedFrames && tile.renderedFrames.length) {
-      const frames = expandVideoFrames(tile.renderedFrames);
+      const slot = tile.durationOverride ?? state.videoDuration;
+      const frames = expandVideoFrames(tile.renderedFrames, slot);
       segments.push({
         frames,
         firstFrame: tile.renderedFrames[0].canvas,
@@ -1824,15 +1923,15 @@ function rebuildPreviewSequence() {
   updateEstimate();
 }
 
-function expandVideoFrames(framesAtRendered) {
+function expandVideoFrames(framesAtRendered, slotMs) {
   // Videos play at real-time (1x) for as much of themselves as fits in the
-  // tile's slot, where the slot is state.videoDuration (separate from the
-  // image slot, so videos can be paced differently). If the video is shorter
-  // than the slot, hold the last frame for the remainder. If longer, trim to
-  // the first slot-worth.
+  // tile's slot. The slot defaults to state.videoDuration but can be
+  // overridden per-tile via tile.durationOverride. If the video is shorter
+  // than the slot, hold the last frame for the remainder. If longer, trim
+  // to the first slot-worth.
   if (!framesAtRendered.length) return [];
 
-  const slotMs = state.videoDuration;
+  if (slotMs == null) slotMs = state.videoDuration;
   const fd = VIDEO_FRAME_DELAY_MS;
   const targetFrames = Math.floor(slotMs / fd);
   const useFrameCount = Math.min(framesAtRendered.length, targetFrames);

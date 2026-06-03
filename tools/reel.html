@@ -699,6 +699,7 @@
           <button data-val="small">Small</button>
           <button data-val="medium" class="active">Medium</button>
           <button data-val="large">Large</button>
+          <button data-val="xl">XL</button>
         </div>
       </div>
       <div class="control">
@@ -862,18 +863,18 @@ const state = {
   encoding: false,
 };
 
-const SIZE_MAP = { small: 320, medium: 540, large: 720 };
+const SIZE_MAP = { small: 540, medium: 720, large: 1080, xl: 1440 };
 const QUALITY_MAP = {
-  punchy:    { palette: 32,  bppEst: 5, mp4Bitrate: 1_000_000 },
-  balanced:  { palette: 128, bppEst: 6, mp4Bitrate: 3_000_000 },
-  pristine:  { palette: 256, bppEst: 7, mp4Bitrate: 6_000_000 },
+  punchy:    { palette: 32,  bppEst: 5, mp4Bitrate:  2_000_000 },
+  balanced:  { palette: 128, bppEst: 6, mp4Bitrate:  6_000_000 },
+  pristine:  { palette: 256, bppEst: 7, mp4Bitrate: 12_000_000 },
 };
 const BG_MAP = { cream: '#f4efe6', white: '#ffffff', black: '#1a1816' };
 const VIDEO_INTERNAL_FPS = 10;   // playback rate for video tiles. Trade-off: smoothness vs file size.
 const VIDEO_MAX_SECONDS = 5;     // auto-trim videos longer than this. Matches slider max.
 const VIDEO_MAX_FRAMES = VIDEO_INTERNAL_FPS * VIDEO_MAX_SECONDS;
 const VIDEO_FRAME_DELAY_MS = 1000 / VIDEO_INTERNAL_FPS;
-const VIDEO_CAPTURE_MAX_DIM = 720;
+const VIDEO_CAPTURE_MAX_DIM = 1080;
 const TRANSITION_FRAMES = { fade: 5, slide: 6, push: 6, zoom: 5, blur: 5 };
 const BLUR_PEAK_PX = 12;
 const ZOOM_AMPLITUDE = 0.2;     // 20% scale change during zoom transition
@@ -1835,6 +1836,9 @@ function updateWarning() {
   if (state.previewSequence.length > 120) {
     messages.push(`${state.previewSequence.length} total frames is a lot for a GIF. The file will be chunky.`);
   }
+  if (state.format === 'gif' && (state.size === 'large' || state.size === 'xl') && state.previewSequence.length > 30) {
+    messages.push(`Heads up: GIFs at this resolution can land in the 20-50MB range. MP4 will give better quality at a fraction of the size.`);
+  }
   if (messages.length) {
     els.warning.classList.remove('hidden');
     els.warning.textContent = messages.join(' ');
@@ -1947,7 +1951,7 @@ async function encodeMp4() {
   });
 
   encoder.configure({
-    codec: 'avc1.42001f',  // H.264 Baseline level 3.1, broadest compatibility
+    codec: 'avc1.640032',  // H.264 High profile level 5.0 — supports up to ~2560px, better compression than Baseline
     width: w,
     height: h,
     bitrate,
@@ -1991,18 +1995,21 @@ function downloadBlob(blob, filename) {
 
 async function checkMp4Support() {
   if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') return false;
-  try {
-    const support = await VideoEncoder.isConfigSupported({
-      codec: 'avc1.42001f',
-      width: 720,
-      height: 720,
-      bitrate: 3_000_000,
-      framerate: VIDEO_INTERNAL_FPS,
-    });
-    return support.supported === true;
-  } catch {
-    return false;
+  // Try High profile first (better quality). Fall back to Baseline if not supported.
+  const codecs = ['avc1.640032', 'avc1.42001f'];
+  for (const codec of codecs) {
+    try {
+      const support = await VideoEncoder.isConfigSupported({
+        codec,
+        width: 1080,
+        height: 1080,
+        bitrate: 6_000_000,
+        framerate: VIDEO_INTERNAL_FPS,
+      });
+      if (support.supported === true) return true;
+    } catch {}
   }
+  return false;
 }
 
 // ---------- Helpers ----------

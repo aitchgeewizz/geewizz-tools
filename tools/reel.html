@@ -526,6 +526,124 @@
     z-index: 4;
   }
 
+  .frame-tile.selected {
+    border-color: var(--accent);
+    border-width: 2px;
+    padding: 0;
+  }
+
+  /* Per-tile reframing sidebar */
+  .frames-area {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .frames-grid {
+    flex: 1;
+    min-width: 0;
+  }
+  .tile-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    padding: 18px 18px 20px;
+    position: sticky;
+    top: 16px;
+  }
+  .tile-sidebar.hidden { display: none; }
+
+  .sidebar-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sidebar-title {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-weight: 500;
+    font-stretch: 100%;
+    font-optical-sizing: auto;
+    font-size: 20px;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .sidebar-close {
+    background: transparent;
+    border: 1px solid var(--line);
+    width: 26px;
+    height: 26px;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--ink-soft);
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .sidebar-close:hover {
+    background: var(--ink);
+    color: var(--bg-card);
+    border-color: var(--ink);
+  }
+
+  .sidebar-preview-wrap {
+    background: var(--ink);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-height: 200px;
+    overflow: hidden;
+  }
+  #sidebar-preview {
+    display: block;
+    max-width: 100%;
+    max-height: 200px;
+  }
+
+  .sidebar-control {
+    margin-bottom: 14px;
+  }
+  .sidebar-control label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    margin-bottom: 8px;
+    font-weight: 700;
+  }
+
+  .anchor-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    width: 96px;
+    aspect-ratio: 1;
+  }
+  .anchor-grid button {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.12s;
+  }
+  .anchor-grid button:hover { background: var(--accent-soft); }
+  .anchor-grid button.active {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  @media (max-width: 720px) {
+    .frames-area { flex-direction: column; }
+    .tile-sidebar { width: 100%; position: static; }
+  }
+
   /* Summary bar */
   .summary {
     background: var(--ink);
@@ -797,9 +915,42 @@
   <div class="frames-section hidden" id="frames-section">
     <div class="frames-section-head">
       <span>Frames</span>
-      <span class="hint">drag to reorder, hover to remove</span>
+      <span class="hint">drag to reorder, click to reframe, hover for remove</span>
     </div>
-    <div class="frames-grid" id="frames-grid"></div>
+    <div class="frames-area">
+      <div class="frames-grid" id="frames-grid"></div>
+      <aside class="tile-sidebar hidden" id="tile-sidebar">
+        <div class="sidebar-head">
+          <span class="sidebar-title" id="sidebar-title">Tile #00</span>
+          <button class="sidebar-close" id="sidebar-close" title="Close">×</button>
+        </div>
+        <div class="sidebar-preview-wrap">
+          <canvas id="sidebar-preview" width="240" height="180"></canvas>
+        </div>
+        <div class="sidebar-control">
+          <label>Fit override</label>
+          <div class="seg" id="tile-fit-seg">
+            <button data-val="default" class="active">Default</button>
+            <button data-val="cover">Cover</button>
+            <button data-val="contain">Contain</button>
+          </div>
+        </div>
+        <div class="sidebar-control">
+          <label>Anchor</label>
+          <div class="anchor-grid" id="anchor-grid">
+            <button data-val="0" title="Top-left"></button>
+            <button data-val="1" title="Top-centre"></button>
+            <button data-val="2" title="Top-right"></button>
+            <button data-val="3" title="Middle-left"></button>
+            <button data-val="4" class="active" title="Centre"></button>
+            <button data-val="5" title="Middle-right"></button>
+            <button data-val="6" title="Bottom-left"></button>
+            <button data-val="7" title="Bottom-centre"></button>
+            <button data-val="8" title="Bottom-right"></button>
+          </div>
+        </div>
+      </aside>
+    </div>
   </div>
 
   <div class="summary hidden" id="summary">
@@ -856,6 +1007,7 @@ const state = {
   kenBurns: false,
   format: 'gif',         // 'gif' | 'mp4'
   mp4Supported: false,   // set on init via WebCodecs probe
+  selectedTileId: null,  // tile.id for sidebar focus, or null
   previewSequence: [],   // [{ canvas, durationMs }]
   previewIdx: 0,
   previewElapsed: 0,
@@ -938,6 +1090,12 @@ const els = {
   downloadBtn: document.getElementById('download-btn'),
   formatSeg: document.getElementById('format-seg'),
   formatMp4Btn: document.getElementById('format-mp4-btn'),
+  tileSidebar: document.getElementById('tile-sidebar'),
+  sidebarTitle: document.getElementById('sidebar-title'),
+  sidebarClose: document.getElementById('sidebar-close'),
+  sidebarPreview: document.getElementById('sidebar-preview'),
+  tileFitSeg: document.getElementById('tile-fit-seg'),
+  anchorGrid: document.getElementById('anchor-grid'),
 };
 
 // ---------- Segmented button wiring ----------
@@ -1132,7 +1290,7 @@ async function addFiles(files) {
   const newTiles = [];
   for (const { file, type } of valid) {
     const id = nextId++;
-    const tile = { id, type, file, name: file.name, status: 'decoding' };
+    const tile = { id, type, file, name: file.name, status: 'decoding', fitOverride: null, anchor: 4 };
     state.tiles.push(tile);
     newTiles.push(tile);
     addTileToGrid(tile);
@@ -1336,6 +1494,7 @@ function removeTile(id) {
   state.tiles.splice(idx, 1);
   const el = els.framesGrid.querySelector(`[data-id="${id}"]`);
   if (el) el.remove();
+  if (state.selectedTileId === id) selectTile(null);
   updateTileIndices();
   if (state.tiles.length === 0) {
     hideSections();
@@ -1354,16 +1513,114 @@ function updateTileIndices() {
 }
 
 // ---------- Sortable ----------
+let isDragging = false;
 new Sortable(els.framesGrid, {
   animation: 150,
   ghostClass: 'sortable-ghost',
   chosenClass: 'sortable-chosen',
+  onChoose: () => { isDragging = true; },
   onEnd: (evt) => {
     const [moved] = state.tiles.splice(evt.oldIndex, 1);
     state.tiles.splice(evt.newIndex, 0, moved);
     updateTileIndices();
     rebuildPreviewSequence();
+    if (state.selectedTileId != null) {
+      const tile = state.tiles.find(t => t.id === state.selectedTileId);
+      if (tile) {
+        els.sidebarTitle.textContent = `Tile #${String(state.tiles.indexOf(tile) + 1).padStart(2, '0')}`;
+      }
+    }
+    setTimeout(() => { isDragging = false; }, 50);
   }
+});
+
+// ---------- Tile click to select ----------
+els.framesGrid.addEventListener('click', (e) => {
+  if (isDragging) return;
+  const tileEl = e.target.closest('.frame-tile');
+  if (!tileEl) return;
+  if (e.target.closest('.frame-remove')) return;
+  const id = parseInt(tileEl.dataset.id, 10);
+  if (state.selectedTileId === id) {
+    selectTile(null);  // clicking selected tile again deselects
+  } else {
+    selectTile(id);
+  }
+});
+
+function selectTile(id) {
+  els.framesGrid.querySelectorAll('.frame-tile.selected').forEach(t => t.classList.remove('selected'));
+  state.selectedTileId = id;
+  if (id == null) {
+    els.tileSidebar.classList.add('hidden');
+    return;
+  }
+  const tile = state.tiles.find(t => t.id === id);
+  if (!tile) {
+    els.tileSidebar.classList.add('hidden');
+    state.selectedTileId = null;
+    return;
+  }
+  const tileEl = els.framesGrid.querySelector(`[data-id="${id}"]`);
+  if (tileEl) tileEl.classList.add('selected');
+  els.tileSidebar.classList.remove('hidden');
+  els.sidebarTitle.textContent = `Tile #${String(state.tiles.indexOf(tile) + 1).padStart(2, '0')}`;
+
+  // Sync fit override seg
+  const fitVal = tile.fitOverride || 'default';
+  els.tileFitSeg.querySelectorAll('button').forEach(b => {
+    b.classList.toggle('active', b.dataset.val === fitVal);
+  });
+
+  // Sync anchor grid
+  els.anchorGrid.querySelectorAll('button').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.val, 10) === tile.anchor);
+  });
+
+  drawSidebarPreview(tile);
+}
+
+function drawSidebarPreview(tile) {
+  const canvas = els.sidebarPreview;
+  const { w, h } = getCanvasDims();
+  const maxW = 244, maxH = 200;
+  const scale = Math.min(maxW / w, maxH / h);
+  const cw = Math.max(1, Math.round(w * scale));
+  const ch = Math.max(1, Math.round(h * scale));
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, cw, ch);
+  let src = null;
+  if (tile.type === 'image') src = tile.renderedCanvas;
+  else if (tile.renderedFrames && tile.renderedFrames[0]) src = tile.renderedFrames[0].canvas;
+  if (src) ctx.drawImage(src, 0, 0, cw, ch);
+}
+
+els.sidebarClose.addEventListener('click', () => selectTile(null));
+
+wireSeg(els.tileFitSeg, (v) => {
+  if (state.selectedTileId == null) return;
+  const tile = state.tiles.find(t => t.id === state.selectedTileId);
+  if (!tile) return;
+  tile.fitOverride = (v === 'default') ? null : v;
+  reflowSingleTile(tile);
+  rebuildPreviewSequence();
+  drawSidebarPreview(tile);
+});
+
+els.anchorGrid.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  if (state.selectedTileId == null) return;
+  const tile = state.tiles.find(t => t.id === state.selectedTileId);
+  if (!tile) return;
+  els.anchorGrid.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  tile.anchor = parseInt(btn.dataset.val, 10);
+  reflowSingleTile(tile);
+  rebuildPreviewSequence();
+  drawSidebarPreview(tile);
 });
 
 // ---------- Canvas dimensions ----------
@@ -1395,16 +1652,7 @@ function reflowAllTiles() {
 
   for (const tile of state.tiles) {
     if (tile.status !== 'ready') continue;
-    if (tile.type === 'image') {
-      tile.renderedCanvas = renderSourceToCanvas(tile.bitmap, w, h);
-    } else {
-      tile.renderedFrames = tile.cachedFrames.map(f => ({
-        canvas: renderSourceToCanvas(f.canvas, w, h),
-        timeMs: f.timeMs,
-      }));
-    }
-    updateTilePoster(tile);
-    updateTileDurationLabel(tile);
+    reflowSingleTile(tile, w, h);
   }
 
   els.previewCanvas.width = w;
@@ -1414,39 +1662,73 @@ function reflowAllTiles() {
   rebuildPreviewSequence();
   updateEstimate();
   updateWarning();
+  if (state.selectedTileId != null) {
+    const tile = state.tiles.find(t => t.id === state.selectedTileId);
+    if (tile) drawSidebarPreview(tile);
+  }
 }
 
-function renderSourceToCanvas(src, w, h) {
+function reflowSingleTile(tile, w, h) {
+  if (w === undefined) {
+    const dims = getCanvasDims();
+    w = dims.w; h = dims.h;
+  }
+  if (tile.type === 'image') {
+    tile.renderedCanvas = renderSourceToCanvas(tile.bitmap, w, h, tile);
+  } else {
+    tile.renderedFrames = tile.cachedFrames.map(f => ({
+      canvas: renderSourceToCanvas(f.canvas, w, h, tile),
+      timeMs: f.timeMs,
+    }));
+  }
+  updateTilePoster(tile);
+  updateTileDurationLabel(tile);
+}
+
+// Map anchor index (0-8 in row-major 3x3) to fractional (ax, ay) in [0, 1]
+function anchorXY(idx) {
+  const col = idx % 3;
+  const row = Math.floor(idx / 3);
+  return { ax: col / 2, ay: row / 2 };
+}
+
+function renderSourceToCanvas(src, w, h, tile) {
+  const fitMode = (tile && tile.fitOverride) || state.fit;
+  const anchorIdx = tile ? tile.anchor : 4;
+  const { ax, ay } = anchorXY(anchorIdx);
+
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
-  if (state.fit === 'contain') {
+  if (fitMode === 'contain') {
     ctx.fillStyle = BG_MAP[state.bg];
     ctx.fillRect(0, 0, w, h);
-    drawContain(ctx, src, w, h);
+    drawContain(ctx, src, w, h, ax, ay);
   } else {
-    drawCover(ctx, src, w, h);
+    drawCover(ctx, src, w, h, ax, ay);
   }
   return canvas;
 }
 
-function drawCover(ctx, src, cw, ch) {
+function drawCover(ctx, src, cw, ch, ax = 0.5, ay = 0.5) {
   const iw = src.width || src.naturalWidth;
   const ih = src.height || src.naturalHeight;
   const scale = Math.max(cw / iw, ch / ih);
-  const w = iw * scale, h = ih * scale;
-  const x = (cw - w) / 2, y = (ch - h) / 2;
-  ctx.drawImage(src, x, y, w, h);
+  const dw = iw * scale, dh = ih * scale;
+  const x = -(dw - cw) * ax;
+  const y = -(dh - ch) * ay;
+  ctx.drawImage(src, x, y, dw, dh);
 }
 
-function drawContain(ctx, src, cw, ch) {
+function drawContain(ctx, src, cw, ch, ax = 0.5, ay = 0.5) {
   const iw = src.width || src.naturalWidth;
   const ih = src.height || src.naturalHeight;
   const scale = Math.min(cw / iw, ch / ih);
-  const w = iw * scale, h = ih * scale;
-  const x = (cw - w) / 2, y = (ch - h) / 2;
-  ctx.drawImage(src, x, y, w, h);
+  const dw = iw * scale, dh = ih * scale;
+  const x = (cw - dw) * ax;
+  const y = (ch - dh) * ay;
+  ctx.drawImage(src, x, y, dw, dh);
 }
 
 function updateTilePoster(tile) {
@@ -1874,6 +2156,7 @@ els.clearBtn.addEventListener('click', () => {
   state.previewIdx = 0;
   state.previewElapsed = 0;
   state.previewLastT = 0;
+  selectTile(null);
   hideSections();
 });
 

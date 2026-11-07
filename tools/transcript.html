@@ -136,6 +136,14 @@
   .source img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 2px; background: var(--accent-soft); display: block; }
   .source img[hidden] { display: none; }
   .source:has(img[hidden]) { grid-template-columns: 1fr; }
+  .notes { margin-top: 16px; }
+  .notes summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 8px; }
+  .notes summary::-webkit-details-marker { display: none; }
+  .notes summary::before { content: ''; width: 7px; height: 7px; background: var(--ink); transition: background 0.3s var(--ease-smooth); }
+  .notes[open] summary::before { background: var(--signal); }
+  #shownotes-text { margin-top: 12px; max-height: 320px; overflow-y: auto; font-size: 14px; line-height: 1.55; color: var(--ink-soft); overflow-wrap: anywhere; }
+  #shownotes-text p + p { margin-top: 6px; }
+  #shownotes-text a { color: var(--ink); }
   .source h2 { font-size: 26px; font-weight: 500; line-height: 1.15; letter-spacing: -0.03em; }
   .facts { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; }
   .facts .label { color: var(--ink-soft); }
@@ -253,6 +261,10 @@
       <div>
         <h2 id="title"></h2>
         <div class="facts" id="facts"></div>
+        <details class="notes" id="shownotes" hidden>
+          <summary class="label">Show notes</summary>
+          <div id="shownotes-text"></div>
+        </details>
       </div>
     </div>
 
@@ -398,6 +410,21 @@
 
     const facts = [meta.author, fmtDate(meta.publishedAt), fmtLength(meta.durationSec)].filter(Boolean);
     $('facts').replaceChildren(...facts.map((f) => Object.assign(document.createElement('span'), { className: 'label', textContent: f })));
+
+    // Show notes: the description, with links made clickable (built as DOM, never innerHTML)
+    const lines = String(meta.description || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    $('shownotes').hidden = !lines.length;
+    $('shownotes').open = false;
+    $('shownotes-text').replaceChildren(...lines.map((line) => {
+      const p = document.createElement('p');
+      let last = 0;
+      for (const m of line.matchAll(/https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"]/g)) {
+        p.append(line.slice(last, m.index), Object.assign(document.createElement('a'), { href: m[0], target: '_blank', rel: 'noopener', textContent: m[0] }));
+        last = m.index + m[0].length;
+      }
+      p.append(line.slice(last));
+      return p;
+    }));
 
     const frag = document.createDocumentFragment();
     chunks.forEach((c) => {

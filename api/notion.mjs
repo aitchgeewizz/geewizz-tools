@@ -1,4 +1,4 @@
-// POST /api/notion  { title, url, author, publishedAt, durationSec, type, tags[], notes, platform, id, chunks[] }
+// POST /api/notion  { title, url, author, authorUrl, description, thumbnail, publishedAt, durationSec, type, tags[], notes, platform, id, chunks[] }
 // Creates a page in the Research library database, with the transcript as the page body.
 // Each paragraph starts with a timestamp that links back to that moment in the video.
 import { checkPasscode, requireEnv, readBody } from './_lib.mjs';
@@ -8,6 +8,7 @@ const VERSION = '2022-06-28';
 const MAX_TEXT = 1900;   // Notion caps a text object at 2000 characters
 const BATCH = 100;       // and a request at 100 blocks
 const TYPES = ['YouTube', 'Podcast', 'Article', 'Other'];
+const CHANNEL = 'Podcast or Channel';
 
 async function notion(path, method, body) {
   const r = await fetch(`${NOTION}${path}`, {
@@ -54,6 +55,41 @@ export function transcriptBlocks({ chunks, platform, id }) {
   );
 }
 
+// Show notes: the video description, one paragraph per line, with links and
+// chapter timestamps ("12:34 Topic") made clickable.
+const URL_RE = /https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"]/g;
+const CHAPTER_RE = /^(\d{1,2}:)?\d{1,2}:\d{2}\b/;
+const toSeconds = (s) => s.split(':').reduce((acc, n) => acc * 60 + Number(n), 0);
+
+export function linkify(line) {
+  const rich = [];
+  let last = 0;
+  for (const m of line.matchAll(URL_RE)) {
+    if (m.index > last) rich.push(...splitLong(line.slice(last, m.index)).map((t) => text(t)));
+    rich.push(text(m[0].slice(0, MAX_TEXT), { text: { link: { url: m[0] } } }));
+    last = m.index + m[0].length;
+  }
+  if (last < line.length) rich.push(...splitLong(line.slice(last)).map((t) => text(t)));
+  return rich;
+}
+
+export function showNoteBlocks({ description, platform, id }) {
+  if (!description) return [];
+  const lines = String(description).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  return lines.map((line) => {
+    const ch = line.match(CHAPTER_RE);
+    let rich;
+    if (ch && platform === 'youtube' && id) {
+      const t = toSeconds(ch[0]);
+      rich = [text(ch[0], { text: { link: { url: `https://www.youtube.com/watch?v=${id}&t=${t}s` } }, annotations: { code: true } }), ...linkify(line.slice(ch[0].length))];
+    } else {
+      rich = linkify(line);
+    }
+    // Notion allows 100 rich text items per block
+    return { object: 'block', type: 'paragraph', paragraph: { rich_text: rich.slice(0, 100) } };
+  });
+}
+
 export function pageProperties(b, today) {
   const props = {
     Title: { title: [text(String(b.title || b.url || 'Untitled').slice(0, MAX_TEXT))] },
@@ -62,7 +98,7 @@ export function pageProperties(b, today) {
     Type: { select: { name: TYPES.includes(b.type) ? b.type : 'Other' } },
     Status: { select: { name: 'Inbox' } },
   };
-  if (b.author) props.Author = { rich_text: [text(String(b.author).slice(0, MAX_TEXT))] };
+  if (b.author) props[CHANNEL] = { rich_text: [text(String(b.author).slice(0, MAX_TEXT), b.authorUrl ? { text: { link: { url: b.authorUrl } } } : {})] };
   if (b.publishedAt) props.Published = { date: { start: String(b.publishedAt).slice(0, 10) } };
   if (Number.isFinite(b.durationSec)) props.Minutes = { number: Math.round(b.durationSec / 60) };
   if (b.notes) props.Notes = { rich_text: [text(String(b.notes).slice(0, MAX_TEXT))] };
@@ -85,6 +121,8 @@ export default async function handler(req, res) {
 
   const head = [];
   if (b.platform === 'youtube' && b.url) head.push({ object: 'block', type: 'video', video: { type: 'external', external: { url: b.url } } });
+  const notes = showNoteBlocks(b);
+  if (notes.length) head.push({ object: 'block', type: 'heading_2', heading_2: { rich_text: [text('Show notes')] } }, ...notes);
   head.push({ object: 'block', type: 'heading_2', heading_2: { rich_text: [text('Transcript')] } });
   const blocks = [...head, ...transcriptBlocks(b)];
 
@@ -92,6 +130,7 @@ export default async function handler(req, res) {
     const page = await notion('/pages', 'POST', {
       parent: { database_id: process.env.NOTION_DATABASE_ID },
       properties: pageProperties(b, today),
+      ...(b.thumbnail && { cover: { type: 'external', external: { url: b.thumbnail } } }),
       children: blocks.slice(0, BATCH),
     });
     for (let i = BATCH; i < blocks.length; i += BATCH) {

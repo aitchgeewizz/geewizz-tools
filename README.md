@@ -8,7 +8,7 @@ Live at [tools.geewizz.com.au](https://tools.geewizz.com.au) (when DNS is set up
 
 - **Squish** — drag images in, get small ones out. Compress before emailing or uploading. Runs entirely in your browser.
 - **Reel** — drop images, MP4s or GIFs. Sequence them, time them, add transitions or Ken Burns, download a looping GIF or an MP4. Built for quick showcase reels. Six transition styles, ping-pong, hold ends, separate timing for stills and clips.
-- **Swap, Voice** — coming soon.
+- **Transcript** — paste a YouTube link, get the transcript with clickable timestamps. Copy it, or send it to a Notion database with the title, channel, publish date, tags and notes filled in.
 
 Each tool is a single self-contained HTML file. Open one in a browser, it works. Save it to your desktop and double-click, it still works.
 
@@ -23,7 +23,7 @@ The image and file tools (like Squish) never upload anything. Your photos stay o
 Clone the repo and open `index.html` in any browser. That's it. No build step, no dependencies, no env vars.
 
 ```bash
-git clone https://github.com/hannahgibson/geewizz-tools.git
+git clone https://github.com/aitchgeewizz/geewizz-tools.git
 cd geewizz-tools
 open index.html
 ```
@@ -38,9 +38,29 @@ The key never goes to a server I run. The repo is public so you can read the cod
 
 You can clear your key from the tool's settings panel any time.
 
+## Transcript: the one tool with a server
+
+Transcript can't run purely in the browser: YouTube and Notion both block direct browser requests. So it uses two small Vercel functions in `api/`:
+
+- `api/transcript.mjs` asks [Supadata](https://supadata.ai) for the transcript and video details. Long or caption-less videos come back as a job the page polls.
+- `api/notion.mjs` creates a page in your Notion database, with the transcript as the page body.
+
+Both are locked behind a passcode, so a public deploy can't spend your credits or write to your Notion. Set these in Vercel → Settings → Environment Variables:
+
+| Name | What |
+|---|---|
+| `SUPADATA_API_KEY` | From your Supadata dashboard |
+| `NOTION_TOKEN` | An internal integration secret from notion.so/profile/integrations |
+| `NOTION_DATABASE_ID` | The database the pages go into. Share it with the integration (••• → Connections) |
+| `TOOLS_PASSCODE` | Anything you like. The tool asks for it once per browser |
+
+The Notion database needs these properties: Title (title), Source URL (url), Author (text), Published (date), Added (date), Type (select: YouTube, Podcast, Article, Other), Tags (multi-select), Status (select: Inbox, Reviewed), Minutes (number), Notes (text).
+
+There's a bookmarklet at the bottom of the tool. Drag it to your bookmarks bar, click it on any YouTube video, and the tool opens with that link already fetching.
+
 ## Design
 
-Every tool shares the same visual language. Same fonts (Bricolage Grotesque + JetBrains Mono), same colour palette, same component patterns.
+Every tool shares the same visual language. It matches the geewizz portfolio: Geist and Geist Mono, a warm grey ground (#EDEBE8), ink for actions and one teal accent (#24DAE0). Mono is for metadata labels only.
 
 Design tokens live in `shared/tokens.css`. Tools duplicate them inline so each file stays standalone.
 
@@ -52,7 +72,6 @@ Design tokens live in `shared/tokens.css`. Tools duplicate them inline so each f
 - gifenc + gifuct-js via CDN for GIF encode and decode (Reel)
 - mp4-muxer + native WebCodecs for MP4 encode (Reel)
 - SortableJS via CDN for tile reordering (Reel)
-- Anthropic SDK via CDN planned for AI tools (Voice)
 - Hosted on Vercel
 
 ### CDN gotcha

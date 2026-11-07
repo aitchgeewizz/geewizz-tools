@@ -23,10 +23,10 @@ This brief covers the foundational setup and the first deployment. It's not the 
 ## 2. Tech stack
 
 - **HTML, CSS, vanilla JS.** No React, no Vue, no build step.
-- **Google Fonts** for typography (Bricolage Grotesque variable + JetBrains Mono).
+- **Google Fonts** for typography (Geist + Geist Mono, same as the geewizz portfolio).
 - **JSZip** via CDN for archive downloads.
-- **ffmpeg.wasm** via CDN for any future video tools (Frame, Swap).
-- **Anthropic SDK** loaded via CDN for any future AI tools (Voice).
+- **ffmpeg.wasm** via CDN for any future video tools.
+- **Anthropic SDK** loaded via CDN for any future AI tools.
 - **GitHub** for version control.
 - **Vercel** for hosting and auto-deploy.
 - **Optional:** custom domain `tools.geewizz.com.au` (configure later in Vercel).
@@ -63,46 +63,40 @@ The dashboard at `index.html` _can_ link to shared CSS. It's expected to live in
 
 Use these tokens consistently across every tool and the dashboard.
 
+> Updated Nov 2026: the old cream, surfy-blue and Bricolage skin is gone. Tools now match the
+> geewizz portfolio (`Personal Portfolio/Geewizz Portfolio/src/index.css`, Figma "Style Guide — geewizz").
+> `shared/tokens.css` is the source of truth.
+
 ### Colours
 ```css
---bg: #f4efe6;            /* warm cream page background */
---bg-card: #fbf8f1;       /* slightly lighter card surface */
---ink: #1a1816;           /* near-black text */
---ink-soft: #5a544c;      /* soft grey for secondary text */
---ink-faint: #9c948a;     /* faint grey for labels/captions */
---line: #d8cfbe;          /* tan border colour */
---accent: #4866ab;        /* surfy blue, primary accent */
---accent-soft: #dbe2ef;   /* pale blue for hover/drag states */
---accent-light: #8aa0e0;  /* lighter blue for use on dark backgrounds */
---good: #2dd4bf;          /* bright aqua, used for success backgrounds */
---good-deep: #0a6e63;     /* deep aqua, used for success text on light bg */
+--bg: #edebe8;            /* ground */
+--bg-card: #f5f4f2;       /* surface: panels, cards, controls */
+--ink: #201e1c;           /* type */
+--ink-soft: #474240;      /* secondary type */
+--ink-faint: #9b9489;     /* labels, captions */
+--line: #c8c4bf;          /* hairlines */
+--accent: #201e1c;        /* primary actions are ink, not colour */
+--accent-soft: #e2e0dc;   /* hover and drag states */
+--signal: #24dae0;        /* the one teal. Artwork supplies every other colour */
 ```
 
 ### Typography
-- **Headings:** `Bricolage Grotesque` variable. Weight typically 500. Width axis 75-100. Used for all headings, large numbers, brand wordmarks.
-- **Body:** `JetBrains Mono` weight 400. 14px base, 13px for secondary text, 11px for labels. Used for everything else including button labels, form fields, footnotes.
+- **Words:** `Geist`, weight 500 for headings, 400 for body. Letter-spacing -0.02em, headings tighter (-0.045em). Tool names lowercase.
+- **Metadata:** `Geist Mono`, 10-11px, uppercase, letter-spacing 0.08em. Labels, tags, counters, corner chrome only.
 
-### Logo / wordmark behaviour
-The dashboard wordmark and each tool's wordmark animate on load and on hover:
-- Resting state: `font-stretch: 80%`, `font-weight: 400`
-- On load: scrunches narrow + thin → expands wide + bold → settles to resting (1.6s with slight overshoot)
-- On hover: smoothly expands to `font-stretch: 100%, font-weight: 750`
-- On unhover: smoothly squishes back to resting state
-- Respects `prefers-reduced-motion`.
-
-See `squish.html` for the full implementation. It's tested and works. Reuse it.
+### Wordmark
+Lowercase, Geist 500, filled with the foil gradient (`--foil`) clipped to text, as on the portfolio landing.
+No squish animation, no variable-width tricks.
 
 ### Layout patterns
-- Max-width container around 980px, centred, with 32-48px padding.
-- Generous whitespace.
-- Subtle SVG grain overlay on body (see Squish for the exact filter).
-- Cards use `--bg-card` background with `--line` 1px borders.
-- Buttons: solid `--accent` with `--bg-card` text, or outline ghost variant.
-- Drop zones: dashed border, hover state lights up with `--accent-soft` background.
+- Corner chrome in mono (nav top right, name and role bottom left), like the portfolio.
+- Cards: `--bg-card`, 4px radius, soft shadow, no border.
+- Small black square markers, borrowed from the portfolio's connector endpoints.
+- No grain, no tinted gradients, no emoji, no pill-shaped dark UI.
 
 ### Microinteractions
-- Hover transitions around 150-200ms.
-- Animation timing: `cubic-bezier(0.4, 0, 0.2, 1)` for transitions, `cubic-bezier(0.34, 1.56, 0.64, 1)` for satisfying overshoots.
+- Motion has a little physics: `--ease-spring` for lifts and nudges, `--ease-smooth` for fades.
+- Respect `prefers-reduced-motion`.
 
 ---
 

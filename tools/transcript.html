@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transcript — YouTube to text and Notion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* geewizz system: same tokens as the portfolio (Figma "Style Guide — geewizz") */
+    --bg: #edebe8;
+    --bg-card: #f5f4f2;
+    --ink: #201e1c;
+    --ink-soft: #474240;
+    --ink-faint: #9b9489;
+    --line: #c8c4bf;
+    --accent-soft: #e2e0dc;
+    --signal: #24dae0;
+    --good-deep: #0b6f73;
+    --bad: #a3352b;
+    --shadow: 0 1px 2px rgba(32, 30, 28, 0.06), 0 8px 24px rgba(32, 30, 28, 0.06);
+    --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+    --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  .label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 32px 80px; }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 24px;
+    margin-bottom: 40px;
+  }
+  .brand h1 {
+    font-weight: 500;
+    font-size: 72px;
+    line-height: 0.95;
+    letter-spacing: -0.045em;
+  }
+  .brand h1 em { font-style: normal; color: var(--signal); }
+  .brand p { margin-top: 12px; max-width: 460px; color: var(--ink-soft); font-size: 14px; }
+  .meta { text-align: right; display: grid; gap: 4px; }
+  .meta a { color: var(--ink); text-decoration: none; }
+  .meta a:hover { text-decoration: underline; }
+
+  .panel {
+    background: var(--bg-card);
+    border-radius: 4px;
+    box-shadow: var(--shadow);
+    padding: 24px;
+  }
+  .panel + .panel, .panel + .row { margin-top: 16px; }
+
+  /* Link input */
+  .get { display: flex; gap: 12px; align-items: stretch; }
+  .field {
+    flex: 1;
+    font: inherit;
+    font-size: 17px;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 14px 16px;
+    outline: none;
+    transition: border-color 0.2s var(--ease-smooth);
+  }
+  .field:focus { border-color: var(--ink); }
+  .field::placeholder { color: var(--ink-faint); }
+
+  .btn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: 1px solid var(--ink);
+    border-radius: 3px;
+    background: var(--ink);
+    color: var(--bg-card);
+    padding: 0 18px;
+    min-height: 44px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform 0.35s var(--ease-spring), background 0.2s, color 0.2s;
+  }
+  .btn:hover:not(:disabled) { transform: translateY(-1px); }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
+  .btn:disabled { opacity: 0.35; cursor: default; }
+  .btn.ghost { background: transparent; color: var(--ink); }
+  .btn.ghost:hover:not(:disabled) { background: var(--accent-soft); }
+
+  .status {
+    margin-top: 14px;
+    min-height: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .status .dot { width: 7px; height: 7px; background: var(--ink-faint); flex: none; }
+  .status.busy .dot { background: var(--signal); animation: pulse 1s var(--ease-smooth) infinite alternate; }
+  .status.ok .dot { background: var(--good-deep); }
+  .status.err .dot { background: var(--bad); }
+  .status.err .label { color: var(--bad); }
+  .status a { color: var(--ink); }
+  @keyframes pulse { from { opacity: 1; } to { opacity: 0.25; } }
+
+  /* Result */
+  .result[hidden] { display: none; }
+  .source { display: grid; grid-template-columns: 200px 1fr; gap: 24px; align-items: start; }
+  .source img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 2px; background: var(--accent-soft); display: block; }
+  .source img[hidden] { display: none; }
+  .source:has(img[hidden]) { grid-template-columns: 1fr; }
+  .source h2 { font-size: 26px; font-weight: 500; line-height: 1.15; letter-spacing: -0.03em; }
+  .facts { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; }
+  .facts .label { color: var(--ink-soft); }
+
+  .row { display: grid; grid-template-columns: 1fr 320px; gap: 16px; margin-top: 16px; }
+
+  .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .bar .actions { display: flex; gap: 8px; }
+
+  .text {
+    max-height: 560px;
+    overflow: auto;
+    font-size: 15px;
+    line-height: 1.6;
+    padding-right: 8px;
+  }
+  .text p + p { margin-top: 12px; }
+  .text .t {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    text-decoration: none;
+    margin-right: 8px;
+  }
+  .text .t:hover { color: var(--ink); }
+  .text.no-times .t { display: none; }
+
+  .send h3 { font-size: 20px; font-weight: 500; letter-spacing: -0.03em; margin-bottom: 18px; }
+  .send label.label { display: block; margin: 0 0 6px; }
+  .send .field { width: 100%; font-size: 15px; padding: 10px 12px; margin-bottom: 16px; }
+  .send textarea.field { min-height: 88px; resize: vertical; }
+  .send .btn { width: 100%; }
+
+  .seg { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; }
+  .seg button {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 6px 9px;
+    cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg-card); }
+
+  /* Passcode */
+  .lock[hidden] { display: none; }
+  .lock { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+  .lock .field { max-width: 260px; font-size: 15px; padding: 10px 12px; }
+
+  footer { margin-top: 56px; display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  footer a { color: var(--ink-soft); }
+  .bookmarklet {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink);
+    border: 1px dashed var(--ink-faint);
+    border-radius: 3px;
+    padding: 6px 10px;
+    text-decoration: none;
+    cursor: grab;
+  }
+
+  @media (max-width: 760px) {
+    .wrap { padding: 32px 16px 64px; }
+    .brand h1 { font-size: 52px; }
+    header { flex-direction: column; align-items: flex-start; }
+    .meta { text-align: left; }
+    .get { flex-direction: column; }
+    .source, .row { grid-template-columns: 1fr; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .btn, .field { transition: none; }
+    .status.busy .dot { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>transcript<em>.</em></h1>
+      <p>Paste a YouTube link. Get the transcript. Copy it or send it to your Research library in Notion.</p>
+    </div>
+    <div class="meta label">
+      <a href="/">← all tools</a>
+      <span>v0.1</span>
+    </div>
+  </header>
+
+  <div class="lock" id="lock" hidden>
+    <span class="label">Passcode</span>
+    <input class="field" id="passcode" type="password" autocomplete="current-password" placeholder="Unlock this browser">
+    <button class="btn ghost" id="save-pass" type="button">Unlock</button>
+  </div>
+
+  <form class="panel" id="get-form">
+    <div class="get">
+      <input class="field" id="url" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off" required>
+      <button class="btn" id="go" type="submit">Get transcript</button>
+    </div>
+    <div class="status" id="status"><span class="dot"></span><span class="label" id="status-text">Ready</span></div>
+  </form>
+
+  <section class="result" id="result" hidden>
+    <div class="panel source">
+      <img id="thumb" alt="" hidden>
+      <div>
+        <h2 id="title"></h2>
+        <div class="facts" id="facts"></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="panel">
+        <div class="bar">
+          <span class="label" id="count"></span>
+          <div class="actions">
+            <button class="btn ghost" id="toggle-times" type="button" aria-pressed="true">Times on</button>
+            <button class="btn ghost" id="copy" type="button">Copy</button>
+          </div>
+        </div>
+        <div class="text" id="text"></div>
+      </div>
+
+      <form class="panel send" id="send-form">
+        <h3>Send to Notion</h3>
+        <span class="label">Type</span>
+        <div class="seg" id="type" role="group" aria-label="Type">
+          <button type="button" data-v="YouTube" aria-pressed="true">YouTube</button>
+          <button type="button" data-v="Podcast" aria-pressed="false">Podcast</button>
+          <button type="button" data-v="Article" aria-pressed="false">Article</button>
+          <button type="button" data-v="Other" aria-pressed="false">Other</button>
+        </div>
+        <label class="label" for="tags">Tags</label>
+        <input class="field" id="tags" placeholder="brand, ai, interviews">
+        <label class="label" for="notes">Notes</label>
+        <textarea class="field" id="notes" placeholder="Why this is worth keeping"></textarea>
+        <button class="btn" id="send" type="submit">Send to Notion</button>
+        <div class="status" id="send-status" hidden><span class="dot"></span><span class="label" id="send-text"></span></div>
+      </form>
+    </div>
+  </section>
+
+  <footer>
+    <span class="label">Transcripts by Supadata · saved to Notion, nowhere else</span>
+    <span class="label">Drag to your bookmarks bar: <a class="bookmarklet" id="bookmarklet" href="#">Transcript ↗</a></span>
+  </footer>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const PASS_KEY = 'geewizz-tools-passcode';
+  const store = {
+    get: () => { try { return localStorage.getItem(PASS_KEY) || ''; } catch { return ''; } },
+    set: (v) => { try { localStorage.setItem(PASS_KEY, v); } catch {} },
+    clear: () => { try { localStorage.removeItem(PASS_KEY); } catch {} },
+  };
+
+  let current = null; // { meta, chunks }
+  let type = 'YouTube';
+
+  // ── helpers ──────────────────────────────────────
+  const stamp = (s) => {
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+  };
+  const fmtDate = (iso) => {
+    const d = new Date(iso);
+    return isNaN(d) ? null : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  const fmtLength = (sec) => {
+    if (!Number.isFinite(sec)) return null;
+    const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+    return h ? `${h} hr ${m} min` : `${m} min`;
+  };
+  const jumpUrl = (t) => current?.meta?.platform === 'youtube' && current.meta.id
+    ? `https://www.youtube.com/watch?v=${current.meta.id}&t=${t}s` : null;
+
+  function setStatus(el, textEl, state, msg) {
+    el.className = `status ${state}`;
+    el.hidden = false;
+    textEl.textContent = msg;
+  }
+  const status = (state, msg) => setStatus($('status'), $('status-text'), state, msg);
+
+  async function api(path, opts = {}) {
+    const r = await fetch(path, {
+      ...opts,
+      headers: { 'Content-Type': 'application/json', 'x-tools-passcode': store.get(), ...(opts.headers || {}) },
+    });
+    const body = await r.json().catch(() => ({ message: `The server said ${r.status}.` }));
+    if (r.status === 401) { store.clear(); showLock(); }
+    if (!r.ok) throw new Error(body.message || `The server said ${r.status}.`);
+    return { status: r.status, body };
+  }
+
+  // ── passcode ─────────────────────────────────────
+  function showLock() { $('lock').hidden = false; $('passcode').focus(); }
+  $('save-pass').addEventListener('click', () => {
+    const v = $('passcode').value.trim();
+    if (!v) return;
+    store.set(v);
+    $('passcode').value = '';
+    $('lock').hidden = true;
+    if ($('url').value) $('get-form').requestSubmit();
+  });
+  $('passcode').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('save-pass').click(); } });
+
+  // ── get transcript ───────────────────────────────
+  $('get-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = $('url').value.trim();
+    if (!url) return;
+    if (!store.get()) { showLock(); status('err', 'Unlock with your passcode first'); return; }
+
+    $('go').disabled = true;
+    $('result').hidden = true;
+    status('busy', 'Fetching transcript');
+    try {
+      let { status: code, body } = await api('/api/transcript', { method: 'POST', body: JSON.stringify({ url }) });
+      let meta = body.meta, transcript = body.transcript;
+
+      // Long or caption-less videos come back as a job to poll
+      if (code === 202 && body.jobId) {
+        const started = Date.now();
+        while (!transcript) {
+          const secs = Math.round((Date.now() - started) / 1000);
+          status('busy', `Transcribing audio · ${secs}s`);
+          await new Promise((r) => setTimeout(r, 3000));
+          const poll = await api(`/api/transcript?job=${encodeURIComponent(body.jobId)}`);
+          if (poll.body.status === 'completed') transcript = poll.body.transcript;
+          if (Date.now() - started > 15 * 60 * 1000) throw new Error('Still transcribing after 15 minutes. Try again later.');
+        }
+      }
+
+      current = { meta, chunks: transcript.chunks };
+      render();
+      const words = transcript.chunks.reduce((n, c) => n + c.text.split(/\s+/).length, 0);
+      status('ok', `Got ${words.toLocaleString('en-AU')} words`);
+    } catch (err) {
+      status('err', err.message);
+    } finally {
+      $('go').disabled = false;
+    }
+  });
+
+  function render() {
+    const { meta, chunks } = current;
+    $('title').textContent = meta.title || meta.url;
+    $('thumb').hidden = !meta.thumbnail;
+    if (meta.thumbnail) $('thumb').src = meta.thumbnail;
+
+    const facts = [meta.author, fmtDate(meta.publishedAt), fmtLength(meta.durationSec)].filter(Boolean);
+    $('facts').replaceChildren(...facts.map((f) => Object.assign(document.createElement('span'), { className: 'label', textContent: f })));
+
+    const frag = document.createDocumentFragment();
+    chunks.forEach((c) => {
+      const p = document.createElement('p');
+      const link = jumpUrl(c.t);
+      const t = document.createElement(link ? 'a' : 'span');
+      t.className = 't';
+      t.textContent = stamp(c.t);
+      if (link) { t.href = link; t.target = '_blank'; t.rel = 'noopener'; }
+      p.append(t, document.createTextNode(c.text));
+      frag.append(p);
+    });
+    $('text').replaceChildren(frag);
+    $('count').textContent = `${chunks.length} paragraphs`;
+
+    setType(meta.platform === 'youtube' ? 'YouTube' : 'Other');
+    $('send-status').hidden = true;
+    $('send').disabled = false;
+    $('result').hidden = false;
+  }
+
+  // ── copy + timestamps ────────────────────────────
+  $('toggle-times').addEventListener('click', (e) => {
+    const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+    e.currentTarget.setAttribute('aria-pressed', on);
+    e.currentTarget.textContent = on ? 'Times on' : 'Times off';
+    $('text').classList.toggle('no-times', !on);
+  });
+
+  $('copy').addEventListener('click', async (e) => {
+    const { meta, chunks } = current;
+    const times = $('toggle-times').getAttribute('aria-pressed') === 'true';
+    const head = [meta.title, [meta.author, fmtDate(meta.publishedAt)].filter(Boolean).join(' · '), meta.url].filter(Boolean).join('\n');
+    const body = chunks.map((c) => (times ? `[${stamp(c.t)}] ` : '') + c.text).join('\n\n');
+    try {
+      await navigator.clipboard.writeText(`${head}\n\n${body}`);
+      e.currentTarget.textContent = 'Copied';
+    } catch {
+      e.currentTarget.textContent = 'Copy failed';
+    }
+    setTimeout(() => { e.currentTarget.textContent = 'Copy'; }, 1600);
+  });
+
+  // ── send to Notion ───────────────────────────────
+  function setType(v) {
+    type = v;
+    $('type').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.v === v));
+  }
+  $('type').addEventListener('click', (e) => { if (e.target.dataset.v) setType(e.target.dataset.v); });
+
+  $('send-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!current) return;
+    const s = (state, msg) => setStatus($('send-status'), $('send-text'), state, msg);
+    $('send').disabled = true;
+    s('busy', 'Sending');
+    try {
+      const { meta, chunks } = current;
+      const { body } = await api('/api/notion', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...meta,
+          type,
+          tags: $('tags').value.split(',').map((t) => t.trim()).filter(Boolean),
+          notes: $('notes').value.trim(),
+          chunks,
+        }),
+      });
+      $('send-text').innerHTML = '';
+      s('ok', 'Saved. ');
+      const a = Object.assign(document.createElement('a'), { href: body.url, target: '_blank', rel: 'noopener', textContent: 'Open in Notion ↗' });
+      $('send-text').append(a);
+    } catch (err) {
+      s('err', err.message);
+      $('send').disabled = false;
+    }
+  });
+
+  // ── bookmarklet + ?url= ──────────────────────────
+  $('bookmarklet').href = `javascript:location.href='${location.origin}/tools/transcript?url='+encodeURIComponent(location.href)`;
+  $('bookmarklet').addEventListener('click', (e) => e.preventDefault());
+
+  const incoming = new URLSearchParams(location.search).get('url');
+  if (incoming) {
+    $('url').value = incoming;
+    history.replaceState(null, '', location.pathname);
+    if (store.get()) $('get-form').requestSubmit(); else showLock();
+  } else if (!store.get()) {
+    showLock();
+  }
+</script>
+
+</body>
+</html>

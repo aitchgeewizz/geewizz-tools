@@ -1,28 +1,37 @@
 /*
   Geewizz Tools — design tokens
+  Same system as the geewizz portfolio (Figma "Style Guide — geewizz").
   These are duplicated inline inside each tool's HTML file so tools stay
   self-contained when downloaded standalone. The dashboard links to this file.
 */
 
 :root {
-  /* Colours */
-  --bg: #f4efe6;            /* warm cream page background */
-  --bg-card: #fbf8f1;       /* slightly lighter card surface */
-  --ink: #1a1816;           /* near-black text */
-  --ink-soft: #5a544c;      /* soft grey for secondary text */
-  --ink-faint: #9c948a;     /* faint grey for labels and captions */
-  --line: #d8cfbe;          /* tan border colour */
-  --accent: #4866ab;        /* surfy blue, primary accent */
-  --accent-soft: #dbe2ef;   /* pale blue for hover and drag states */
-  --accent-light: #8aa0e0;  /* lighter blue for use on dark backgrounds */
-  --good: #2dd4bf;          /* bright aqua for success backgrounds */
-  --good-deep: #0a6e63;     /* deep aqua for success text on light bg */
+  /* Colour — warm neutrals, one teal. Artwork supplies every other colour. */
+  --bg: #edebe8;            /* ground */
+  --bg-card: #f5f4f2;       /* surface: panels, cards, controls */
+  --ink: #201e1c;           /* type */
+  --ink-soft: #474240;      /* secondary type */
+  --ink-faint: #9b9489;     /* labels, captions */
+  --line: #c8c4bf;          /* hairlines */
+  --accent: #201e1c;        /* primary actions are ink, not colour */
+  --accent-soft: #e2e0dc;   /* hover and drag states */
+  --accent-light: #24dae0;  /* accent on dark backgrounds */
+  --good: #24dae0;          /* the one teal */
+  --good-deep: #0b6f73;     /* teal, dark enough for text */
+  --signal: #24dae0;
 
-  /* Typography */
-  --font-display: 'Bricolage Grotesque', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  /* The wordmark lighting, clipped to text */
+  --foil: linear-gradient(95.6deg, #ffffff 1.4%, #f2efeb 56.6%, #a09a92 114.7%);
 
-  /* Motion */
-  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --shadow: 0 1px 2px rgba(32, 30, 28, 0.06), 0 8px 24px rgba(32, 30, 28, 0.06);
+  --shadow-lift: 0 2px 4px rgba(32, 30, 28, 0.06), 0 16px 40px rgba(32, 30, 28, 0.1);
+
+  /* Type — Geist for words, Geist Mono for metadata */
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Motion — a touch of spring, never the default ease */
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
 }

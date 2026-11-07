@@ -6,21 +6,26 @@
 <title>Squish — batch image compressor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root {
-    --bg: #f4efe6;
-    --bg-card: #fbf8f1;
-    --ink: #1a1816;
-    --ink-soft: #5a544c;
-    --ink-faint: #9c948a;
-    --line: #d8cfbe;
-    --accent: #4866ab;
-    --accent-soft: #dbe2ef;
-    --accent-light: #8aa0e0;
-    --good: #2dd4bf;
-    --good-deep: #0a6e63;
+    /* geewizz system: same tokens as the portfolio (Figma "Style Guide — geewizz") */
+    --bg: #edebe8;            /* ground */
+    --bg-card: #f5f4f2;       /* surface: panels, cards, controls */
+    --ink: #201e1c;           /* type */
+    --ink-soft: #474240;      /* secondary type */
+    --ink-faint: #9b9489;     /* labels, captions */
+    --line: #c8c4bf;          /* hairlines */
+    --accent: #201e1c;        /* primary actions are ink, not colour */
+    --accent-soft: #e2e0dc;   /* hover and drag states */
+    --accent-light: #24dae0;  /* accent on dark backgrounds */
+    --good: #24dae0;          /* the one teal */
+    --good-deep: #0b6f73;     /* teal, dark enough for text */
+    --signal: #24dae0;
+    --shadow: 0 1px 2px rgba(32, 30, 28, 0.06), 0 8px 24px rgba(32, 30, 28, 0.06);
+    --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -28,29 +33,15 @@
   html, body {
     background: var(--bg);
     color: var(--ink);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-sans);
     font-size: 14px;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
     line-height: 1.5;
     min-height: 100vh;
   }
 
-  body {
-    background-image:
-      radial-gradient(circle at 20% 10%, rgba(72, 102, 171, 0.05) 0%, transparent 40%),
-      radial-gradient(circle at 80% 80%, rgba(72, 102, 171, 0.04) 0%, transparent 40%);
-    background-attachment: fixed;
-  }
 
-  /* subtle grain */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.4;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.1 0 0 0 0 0.1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    z-index: 0;
-  }
 
   .wrap {
     max-width: 980px;
@@ -70,39 +61,17 @@
   }
 
   .brand h1 {
-    font-family: 'Bricolage Grotesque', sans-serif;
-    font-weight: 400;
-    font-stretch: 80%;
-    font-size: 76px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-size: 72px;
     line-height: 0.95;
-    letter-spacing: -0.02em;
-    font-optical-sizing: auto;
-    display: inline-block;
-    animation: squishIntro 1.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-    transition: font-weight 0.55s cubic-bezier(0.4, 0, 0.2, 1),
-                font-stretch 0.55s cubic-bezier(0.4, 0, 0.2, 1);
-    cursor: default;
+    letter-spacing: -0.045em;
+    text-transform: lowercase;
   }
 
   .brand h1 em {
-    font-style: italic;
-    color: var(--accent);
-  }
-
-  .brand h1:hover {
-    font-weight: 750;
-    font-stretch: 100%;
-  }
-
-  @keyframes squishIntro {
-    0%   { font-weight: 200; font-stretch: 75%; }
-    55%  { font-weight: 800; font-stretch: 100%; }
-    100% { font-weight: 400; font-stretch: 80%; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .brand h1 { animation: none; transition: none; }
-    .brand h1:hover { font-weight: 400; font-stretch: 80%; }
+    font-style: normal;
+    color: var(--signal);
   }
 
   .brand p {
@@ -117,6 +86,7 @@
     text-align: right;
     font-size: 11px;
     text-transform: uppercase;
+    font-family: var(--font-mono);
     letter-spacing: 0.1em;
     color: var(--ink-faint);
   }
@@ -145,6 +115,7 @@
     display: block;
     font-size: 10px;
     text-transform: uppercase;
+    font-family: var(--font-mono);
     letter-spacing: 0.12em;
     color: var(--ink-faint);
     margin-bottom: 8px;
@@ -152,17 +123,15 @@
   }
 
   .control .value {
-    font-family: 'Bricolage Grotesque', sans-serif;
+    font-family: var(--font-sans);
     font-size: 28px;
     font-weight: 500;
-    font-stretch: 100%;
-    font-optical-sizing: auto;
     line-height: 1;
     color: var(--ink);
   }
 
   .control .value span {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
     color: var(--ink-faint);
     margin-left: 4px;
@@ -205,6 +174,7 @@
     font-family: inherit;
     font-size: 11px;
     text-transform: uppercase;
+    font-family: var(--font-mono);
     letter-spacing: 0.1em;
     cursor: pointer;
     color: var(--ink-soft);
@@ -250,10 +220,8 @@
   }
 
   .drop h2 {
-    font-family: 'Bricolage Grotesque', sans-serif;
+    font-family: var(--font-sans);
     font-weight: 500;
-    font-stretch: 100%;
-    font-optical-sizing: auto;
     font-size: 32px;
     margin: 16px 0 8px;
     letter-spacing: -0.01em;
@@ -327,6 +295,7 @@
     background: var(--bg);
     border: 1px solid var(--line);
     text-transform: uppercase;
+    font-family: var(--font-mono);
     letter-spacing: 0.1em;
     color: var(--ink-soft);
   }
@@ -370,16 +339,15 @@
   .summary-stat .label {
     font-size: 10px;
     text-transform: uppercase;
+    font-family: var(--font-mono);
     letter-spacing: 0.12em;
     color: var(--ink-faint);
     margin-bottom: 6px;
   }
   .summary-stat .value {
-    font-family: 'Bricolage Grotesque', sans-serif;
+    font-family: var(--font-sans);
     font-size: 22px;
     font-weight: 500;
-    font-stretch: 100%;
-    font-optical-sizing: auto;
     line-height: 1;
     letter-spacing: -0.01em;
   }
@@ -399,6 +367,7 @@
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
+    font-family: var(--font-mono);
     letter-spacing: 0.12em;
     cursor: pointer;
     transition: all 0.15s;

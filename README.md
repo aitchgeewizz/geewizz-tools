@@ -54,7 +54,7 @@ Both are locked behind a passcode, so a public deploy can't spend your credits o
 | `NOTION_DATABASE_ID` | The database the pages go into. Share it with the integration (••• → Connections) |
 | `TOOLS_PASSCODE` | Anything you like. The tool asks for it once per browser |
 
-The Notion database needs these properties: Title (title), Source URL (url), Author (text), Published (date), Added (date), Type (select: YouTube, Podcast, Article, Other), Tags (multi-select), Status (select: Inbox, Reviewed), Minutes (number), Notes (text).
+The Notion database needs these properties: Title (title), Source URL (url), Podcast or Channel (text), Published (date), Added (date), Type (select: YouTube, Podcast, Article, Other), Tags (multi-select), Status (select: Inbox, Reviewed), Minutes (number), Notes (text).
 
 There's a bookmarklet at the bottom of the tool. Drag it to your bookmarks bar, click it on any YouTube video, and the tool opens with that link already fetching.
 

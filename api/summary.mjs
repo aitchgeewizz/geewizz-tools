@@ -1,7 +1,7 @@
-// POST /api/summary  { title, author, description, durationSec, chunks[{t,text}] }
-//   -> { summary: { brief, keyPoints[{t,point}], quotes[{t,quote,speaker}], mentions[{name,kind,url,t}], tags[] } }
-// One Claude call per episode. The transcript goes in with [m:ss] stamps so every
-// point and quote can link back to its moment.
+// POST /api/summary  { kind, type, title, author, description, links[], existingTags[], chunks[{t,text}] }
+//   -> { summary: { brief, keyPoints[{t,point}], quotes[{t,quote,speaker}], mentions[{name,kind,url,t}], tags[], newTags[] } }
+// One Claude call per item. A transcript goes in with [m:ss] stamps and an article
+// or PDF with [¶n] paragraph numbers, so every point and quote can link back.
 import Anthropic from '@anthropic-ai/sdk';
 import { checkPasscode, requireEnv, readBody } from './_lib.mjs';
 import { stamp } from './notion.mjs';
@@ -12,8 +12,9 @@ const KINDS = ['person', 'company', 'product or tool', 'book', 'article or post'
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['brief', 'keyPoints', 'quotes', 'mentions', 'tags'],
+  required: ['title', 'brief', 'keyPoints', 'quotes', 'mentions', 'tags'],
   properties: {
+    title: { type: 'string', description: 'The real title of the piece as the source gives it (for a paper, its title; for a talk, its name). Keep the given title if it already is one.' },
     brief: { type: 'string', description: 'Two to four sentences: what this episode is about and why it matters.' },
     keyPoints: {
       type: 'array',
@@ -21,7 +22,7 @@ const SCHEMA = {
       items: {
         type: 'object', additionalProperties: false, required: ['t', 'point'],
         properties: {
-          t: { type: 'integer', description: 'Seconds from the start, taken from the nearest [m:ss] stamp.' },
+          t: { type: 'integer', description: 'Where it comes from: seconds for a [m:ss] stamp, or n for a [¶n] paragraph.' },
           point: { type: 'string', description: 'One or two sentences.' },
         },
       },
@@ -46,53 +47,68 @@ const SCHEMA = {
         properties: {
           name: { type: 'string' },
           kind: { type: 'string', enum: KINDS },
-          url: { type: 'string', description: 'Only a URL that appears in the show notes. Empty string otherwise. Never guess one.' },
-          t: { type: 'integer', description: 'Seconds where it is first mentioned.' },
+          url: { type: 'string', description: 'Only a URL listed in the show notes or the links. Empty string otherwise. Never guess one.' },
+          t: { type: 'integer', description: 'Where it is first mentioned, in the same units.' },
         },
       },
     },
     tags: {
       type: 'array',
-      description: '3 to 6 short lowercase topic tags for a research library.',
+      description: '2 to 5 short lowercase topic tags. Reuse the library tags wherever one fits; add a new tag only for a topic none of them covers.',
       items: { type: 'string' },
     },
   },
 };
 
-const SYSTEM = `You summarise podcast and video transcripts for a brand designer's research library.
+const SYSTEM = `You summarise videos, podcasts, articles and PDFs for a brand designer's research library.
 Write plainly, in Australian English, without hype. Keep to what is actually said; do not add outside facts.
 Transcripts are auto-generated, so names may be misspelt: prefer the spelling in the title or show notes.
-Every timestamp you return must come from a [m:ss] stamp in the transcript, converted to seconds.`;
+Every location you return must come from the source: a [m:ss] stamp converted to seconds, or the n of a [¶n] paragraph.`;
+
+const MAX_PROMPT_CHARS = 500_000; // about 125k tokens, so a whole book stays under a dollar
 
 function prompt(b) {
-  const lines = b.chunks.map((c) => `[${stamp(c.t)}] ${c.text}`).join('\n');
+  const text = b.kind === 'text';
+  let lines = b.chunks.map((c, i) => (text ? `[¶${i + 1}] ` : `[${stamp(c.t)}] `) + (c.h ? `## ${c.text}` : c.text)).join('\n');
+  const cut = lines.length > MAX_PROMPT_CHARS;
+  if (cut) lines = lines.slice(0, MAX_PROMPT_CHARS);
   return [
+    `Kind: ${b.type || (text ? 'Article' : 'Video')}`,
     `Title: ${b.title || 'Unknown'}`,
-    `Channel or show: ${b.author || 'Unknown'}`,
-    b.description ? `Show notes:\n${b.description}` : 'Show notes: none',
-    `Transcript:\n${lines}`,
-  ].join('\n\n');
+    `${text ? 'Site or author' : 'Channel or show'}: ${b.author || 'Unknown'}`,
+    b.description ? `${text ? 'Description' : 'Show notes'}:\n${b.description}` : '',
+    b.links?.length ? `Links on the page:\n${b.links.slice(0, 300).join('\n')}` : '',
+    `Library tags: ${b.existingTags?.length ? b.existingTags.join(', ') : 'none yet'}`,
+    `${text ? 'Text' : 'Transcript'}${cut ? ' (cut short, it is very long)' : ''}:\n${lines}`,
+  ].filter(Boolean).join('\n\n');
 }
 
 // Keep the summary honest even if the model drifts: timestamps snap to real
 // stamps, and a URL survives only if it is in the show notes.
 function tidy(s, b) {
   const stamps = b.chunks.map((c) => c.t);
-  const snap = (t) => {
-    if (!Number.isFinite(t) || !stamps.length) return 0;
-    return stamps.reduce((best, x) => (Math.abs(x - t) < Math.abs(best - t) ? x : best), stamps[0]);
-  };
-  const notes = String(b.description || '');
+  const n = b.chunks.length;
+  const snap = b.kind === 'text'
+    ? (t) => (Number.isFinite(t) ? Math.min(n, Math.max(1, Math.round(t))) : 1)
+    : (t) => {
+      if (!Number.isFinite(t) || !stamps.length) return 0;
+      return stamps.reduce((best, x) => (Math.abs(x - t) < Math.abs(best - t) ? x : best), stamps[0]);
+    };
+  const notes = String(b.description || '') + '\n' + (b.links || []).join('\n');
+  const library = new Set((b.existingTags || []).map((t) => String(t).toLowerCase()));
   const str = (v) => (typeof v === 'string' ? v.trim() : '');
-  return {
+  const out = {
+    title: str(s.title).slice(0, 200),
     brief: str(s.brief),
     keyPoints: (s.keyPoints || []).map((k) => ({ t: snap(k.t), point: str(k.point) })).filter((k) => k.point),
     quotes: (s.quotes || []).map((q) => ({ t: snap(q.t), quote: str(q.quote), speaker: str(q.speaker) })).filter((q) => q.quote),
     mentions: (s.mentions || [])
       .map((m) => ({ t: snap(m.t), name: str(m.name), kind: KINDS.includes(m.kind) ? m.kind : 'other', url: str(m.url) && notes.includes(str(m.url)) ? str(m.url) : '' }))
       .filter((m) => m.name),
-    tags: [...new Set((s.tags || []).map((t) => str(t).toLowerCase()).filter(Boolean))].slice(0, 8),
+    tags: [...new Set((s.tags || []).map((t) => str(t).toLowerCase()).filter(Boolean))].slice(0, 6),
   };
+  out.newTags = out.tags.filter((t) => !library.has(t));
+  return out;
 }
 
 // Never let a key end up in the logs.

@@ -1,13 +1,15 @@
-// POST /api/notion  { title, url, author, authorUrl, description, thumbnail, publishedAt, durationSec, type, tags[], notes, platform, id, chunks[] }
-// Creates a page in the Research library database, with the transcript as the page body.
-// Each paragraph starts with a timestamp that links back to that moment in the video.
+// GET  /api/notion  -> { tags[] }  the Tags already in the Research library
+// POST /api/notion  { title, url, author, authorUrl, description, thumbnail, publishedAt, durationSec,
+//                     kind, type, embed, tags[], notes, platform, id, summary, chunks[] }
+// Creates a page in the Research library database, with the transcript or full text as the page body.
+// In a transcript each paragraph starts with a timestamp that links back to that moment.
 import { checkPasscode, requireEnv, readBody } from './_lib.mjs';
 
 const NOTION = 'https://api.notion.com/v1';
 const VERSION = '2022-06-28';
 const MAX_TEXT = 1900;   // Notion caps a text object at 2000 characters
 const BATCH = 100;       // and a request at 100 blocks
-const TYPES = ['YouTube', 'Podcast', 'Article', 'Other'];
+const TYPES = ['YouTube', 'Podcast', 'Video', 'Article', 'PDF', 'Other'];
 const CHANNEL = 'Podcast or Channel';
 
 async function notion(path, method, body) {
@@ -18,7 +20,7 @@ async function notion(path, method, body) {
       'Notion-Version': VERSION,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(body),
+    ...(body && { body: JSON.stringify(body) }),
   });
   const json = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(json.message || `Notion said ${r.status}`), { status: r.status, code: json.code });
@@ -42,6 +44,7 @@ const splitLong = (s) => {
 export function transcriptBlocks({ chunks, platform, id }) {
   const jump = (t) => (platform === 'youtube' && id ? `https://www.youtube.com/watch?v=${id}&t=${t}s` : null);
   return (chunks || []).flatMap((c) =>
+    c.h ? [{ object: 'block', type: 'heading_3', heading_3: { rich_text: [text(String(c.text).slice(0, MAX_TEXT))] } }] :
     splitLong(String(c.text || '')).map((part, i) => {
       const rich = [];
       if (i === 0 && Number.isFinite(c.t)) {
@@ -95,9 +98,11 @@ const heading = (t) => ({ object: 'block', type: 'heading_2', heading_2: { rich_
 const para = (rich) => ({ object: 'block', type: 'paragraph', paragraph: { rich_text: rich } });
 const bullet = (rich) => ({ object: 'block', type: 'bulleted_list_item', bulleted_list_item: { rich_text: rich } });
 
-export function summaryBlocks({ summary, platform, id }) {
+export function summaryBlocks({ summary, platform, id, kind }) {
   if (!summary) return [];
+  // Articles and PDFs have no clock, so their points carry no stamp in Notion.
   const at = (t) => {
+    if (kind === 'text' || !Number.isFinite(t)) return text('');
     const url = platform === 'youtube' && id ? `https://www.youtube.com/watch?v=${id}&t=${t}s` : null;
     return text(stamp(t), { text: url ? { link: { url } } : {}, annotations: { code: true } });
   };
@@ -105,19 +110,19 @@ export function summaryBlocks({ summary, platform, id }) {
   const out = [];
   if (summary.brief) out.push(heading('In brief'), para([text(clip(summary.brief))]));
   if (summary.keyPoints?.length) {
-    out.push(heading('Key points'), ...summary.keyPoints.map((k) => bullet([at(k.t), text(' ' + clip(k.point))])));
+    out.push(heading('Key points'), ...summary.keyPoints.map((k) => bullet([at(k.t), text((kind === 'text' ? '' : ' ') + clip(k.point))])));
   }
   if (summary.quotes?.length) {
     out.push(heading('Quotes'), ...summary.quotes.map((q) => ({
       object: 'block', type: 'quote',
-      quote: { rich_text: [text(clip(q.quote)), text('\n'), ...(q.speaker ? [text(clip(q.speaker) + ' · ', { annotations: { italic: true } })] : []), at(q.t)] },
+      quote: { rich_text: [text(clip(q.quote)), ...(q.speaker || kind !== 'text' ? [text('\n')] : []), ...(q.speaker ? [text(clip(q.speaker) + (kind === 'text' ? '' : ' · '), { annotations: { italic: true } })] : []), ...(kind === 'text' ? [] : [at(q.t)])] },
     })));
   }
   if (summary.mentions?.length) {
     out.push(heading('Mentioned'), ...summary.mentions.map((m) => bullet([
       text(clip(m.name), m.url ? { text: { link: { url: m.url } } } : {}),
-      text(` · ${m.kind} · `, { annotations: { color: 'gray' } }),
-      at(m.t),
+      text(kind === 'text' ? ` · ${m.kind}` : ` · ${m.kind} · `, { annotations: { color: 'gray' } }),
+      ...(kind === 'text' ? [] : [at(m.t)]),
     ])));
   }
   return out;
@@ -141,9 +146,29 @@ export function pageProperties(b, today) {
   return props;
 }
 
+// What sits at the top of the page: the video, the audio, the PDF or a bookmark card.
+function embedBlock(b) {
+  const e = b.embed?.url ? b.embed : (b.url ? { type: 'bookmark', url: b.url } : null);
+  if (!e) return [];
+  if (e.type === 'video' && b.platform !== 'youtube') return [{ object: 'block', type: 'bookmark', bookmark: { url: e.url } }];
+  if (['video', 'audio', 'pdf'].includes(e.type)) return [{ object: 'block', type: e.type, [e.type]: { type: 'external', external: { url: e.url } } }];
+  return [{ object: 'block', type: 'bookmark', bookmark: { url: e.url } }];
+}
+
+async function listTags(res) {
+  try {
+    const db = await notion(`/databases/${process.env.NOTION_DATABASE_ID}`, 'GET');
+    const tags = (db.properties?.Tags?.multi_select?.options || []).map((o) => o.name);
+    return res.json({ tags });
+  } catch (e) {
+    return res.status(e.status || 500).json({ error: e.code || 'notion', message: e.message });
+  }
+}
+
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'method', message: 'Use POST.' });
+  if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'method', message: 'Use POST.' });
   if (!checkPasscode(req, res) || !requireEnv(res, 'NOTION_TOKEN', 'NOTION_DATABASE_ID')) return;
+  if (req.method === 'GET') return listTags(res);
 
   const b = readBody(req);
   if (!b.url || !Array.isArray(b.chunks) || !b.chunks.length) {
@@ -153,12 +178,10 @@ export default async function handler(req, res) {
   // "Added" is the day in Melbourne, not UTC.
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Melbourne' }).format(new Date());
 
-  const head = [];
-  if (b.platform === 'youtube' && b.url) head.push({ object: 'block', type: 'video', video: { type: 'external', external: { url: b.url } } });
-  head.push(...summaryBlocks(b));
-  const notes = showNoteBlocks(b);
+  const head = [...embedBlock(b), ...summaryBlocks(b)];
+  const notes = b.kind === 'text' ? [] : showNoteBlocks(b);
   if (notes.length) head.push({ object: 'block', type: 'heading_2', heading_2: { rich_text: [text('Show notes')] } }, ...notes);
-  head.push({ object: 'block', type: 'heading_2', heading_2: { rich_text: [text('Transcript')] } });
+  head.push({ object: 'block', type: 'heading_2', heading_2: { rich_text: [text(b.kind === 'text' ? 'Full text' : 'Transcript')] } });
   const blocks = [...head, ...transcriptBlocks(b)];
 
   try {

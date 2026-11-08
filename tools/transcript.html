@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Transcript — YouTube to text and Notion</title>
+<title>Transcript — any link to text and Notion</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -196,6 +196,22 @@
   }
   .text .t:hover { color: var(--ink); }
   .text.no-times .t { display: none; }
+  .text p.h { font-weight: 600; letter-spacing: -0.02em; margin-top: 20px; }
+  .text p.flash { background: color-mix(in srgb, var(--signal) 25%, transparent); transition: background 1.2s var(--ease-smooth); }
+
+  /* Tags: the Notion library as chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .chip {
+    font: inherit; font-size: 13px; line-height: 1; color: var(--ink-soft);
+    background: transparent; border: 1px solid var(--line); border-radius: 999px;
+    padding: 7px 11px; cursor: pointer;
+    transition: background 0.2s var(--ease-smooth), color 0.2s, border-color 0.2s;
+  }
+  .chip:hover { border-color: var(--ink); }
+  .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg-card); }
+  .chip .new { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; margin-left: 6px; opacity: 0.7; }
+  .chips-hint { font-size: 12px; color: var(--ink-faint); margin-bottom: 10px; line-height: 1.4; }
+  .send .field.tag-add { font-size: 13px; padding: 8px 10px; }
 
   .send h3 { font-size: 20px; font-weight: 500; letter-spacing: -0.03em; margin-bottom: 18px; }
   .send label.label { display: block; margin: 0 0 6px; }
@@ -222,6 +238,7 @@
   .lock[hidden] { display: none; }
   .lock { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
   .lock .field { max-width: 260px; font-size: 15px; padding: 10px 12px; }
+  .field:disabled { opacity: 0.5; cursor: not-allowed; }
 
   footer { margin-top: 56px; display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
   footer a { color: var(--ink-soft); }
@@ -261,11 +278,11 @@
   <header>
     <div class="brand">
       <h1>transcript<em>.</em></h1>
-      <p>Paste a YouTube link. Get the transcript. Copy it or send it to your Research library in Notion.</p>
+      <p>Paste a link to a video, podcast, article or PDF. Get the text and a summary. Copy it or send it to your Research library in Notion.</p>
     </div>
     <div class="meta label">
       <a href="/">← all tools</a>
-      <span>v0.2</span>
+      <span>v0.3</span>
     </div>
   </header>
 
@@ -277,8 +294,8 @@
 
   <form class="panel" id="get-form">
     <div class="get">
-      <input class="field" id="url" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off" required>
-      <button class="btn" id="go" type="submit">Get transcript</button>
+      <input class="field" id="url" type="url" inputmode="url" placeholder="Paste a YouTube, podcast, article or PDF link" autocomplete="off" required>
+      <button class="btn" id="go" type="submit">Get it</button>
     </div>
     <div class="status" id="status"><span class="dot"></span><span class="label" id="status-text">Ready</span></div>
   </form>
@@ -325,11 +342,15 @@
         <div class="seg" id="type" role="group" aria-label="Type">
           <button type="button" data-v="YouTube" aria-pressed="true">YouTube</button>
           <button type="button" data-v="Podcast" aria-pressed="false">Podcast</button>
+          <button type="button" data-v="Video" aria-pressed="false">Video</button>
           <button type="button" data-v="Article" aria-pressed="false">Article</button>
+          <button type="button" data-v="PDF" aria-pressed="false">PDF</button>
           <button type="button" data-v="Other" aria-pressed="false">Other</button>
         </div>
-        <label class="label" for="tags">Tags</label>
-        <input class="field" id="tags" placeholder="brand, ai, interviews">
+        <span class="label" id="tags-label">Tags</span>
+        <p class="chips-hint" id="tags-hint">Your tags from Notion. Tap to add or remove.</p>
+        <div class="chips" id="tags" role="group" aria-labelledby="tags-label"></div>
+        <input class="field tag-add" id="tag-add" placeholder="Add a new tag and press Enter" autocomplete="off">
         <label class="label" for="notes">Notes</label>
         <textarea class="field" id="notes" placeholder="Why this is worth keeping"></textarea>
         <button class="btn" id="send" type="submit">Send to Notion</button>
@@ -372,6 +393,7 @@
   };
   const jumpUrl = (t) => current?.meta?.platform === 'youtube' && current.meta.id
     ? `https://www.youtube.com/watch?v=${current.meta.id}&t=${t}s` : null;
+  const isText = () => current?.meta?.kind === 'text';
 
   function setStatus(el, textEl, state, msg) {
     el.className = `status ${state}`;
@@ -392,14 +414,23 @@
   }
 
   // ── passcode ─────────────────────────────────────
-  function showLock() { $('lock').hidden = false; $('passcode').focus(); }
+  // The link box stays off until this browser has the passcode.
+  function setLocked(locked) {
+    $('lock').hidden = !locked;
+    $('url').disabled = locked;
+    $('go').disabled = locked;
+    $('url').placeholder = locked ? 'Enter your passcode above to start' : 'Paste a YouTube, podcast, article or PDF link';
+    if (locked) status('', 'Locked'); else status('', 'Ready');
+  }
+  function showLock() { setLocked(true); $('passcode').focus(); }
   $('save-pass').addEventListener('click', () => {
     const v = $('passcode').value.trim();
     if (!v) return;
     store.set(v);
     $('passcode').value = '';
-    $('lock').hidden = true;
-    if ($('url').value) $('get-form').requestSubmit();
+    setLocked(false);
+    loadLibrary();
+    if ($('url').value) $('get-form').requestSubmit(); else $('url').focus();
   });
   $('passcode').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('save-pass').click(); } });
 
@@ -412,7 +443,7 @@
 
     $('go').disabled = true;
     $('result').hidden = true;
-    status('busy', 'Fetching transcript');
+    status('busy', 'Reading the link');
     try {
       let { status: code, body } = await api('/api/transcript', { method: 'POST', body: JSON.stringify({ url }) });
       let meta = body.meta, transcript = body.transcript;
@@ -430,7 +461,8 @@
         }
       }
 
-      current = { meta, chunks: transcript.chunks, summary: null };
+      current = { meta, chunks: transcript.chunks, summary: null, tagsTouched: false };
+      selected = new Set();
       render();
       const words = transcript.chunks.reduce((n, c) => n + c.text.split(/\s+/).length, 0);
       status('ok', `Got ${words.toLocaleString('en-AU')} words`);
@@ -438,13 +470,18 @@
     } catch (err) {
       status('err', err.message);
     } finally {
-      $('go').disabled = false;
+      $('go').disabled = !store.get();
     }
   });
 
   // ── summary ──────────────────────────────────────
   const sumStatus = (state, msg) => setStatus($('sum-status'), $('sum-text'), state, msg);
   const tLink = (t) => {
+    if (isText()) {
+      const el = Object.assign(document.createElement('a'), { className: 't-link', href: `#p${t}`, textContent: `¶${t}` });
+      el.addEventListener('click', (e) => { e.preventDefault(); jumpTo(t); });
+      return el;
+    }
     const url = jumpUrl(t);
     const el = document.createElement(url ? 'a' : 'span');
     el.className = 't-link';
@@ -452,6 +489,17 @@
     if (url) { el.href = url; el.target = '_blank'; el.rel = 'noopener'; }
     return el;
   };
+
+  function jumpTo(n) {
+    const p = document.getElementById(`p${n}`);
+    if (!p) return;
+    if ($('find').value) { $('find').value = ''; find(''); }
+    const box = $('text');
+    box.scrollTo({ top: box.scrollTop + p.getBoundingClientRect().top - box.getBoundingClientRect().top - 8, behavior: 'smooth' });
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    p.classList.add('flash');
+    setTimeout(() => p.classList.remove('flash'), 1400);
+  }
 
   function summarise(item) {
     $('summary').hidden = false;
@@ -462,14 +510,20 @@
     const { meta, chunks } = item;
     item.summaryPromise = api('/api/summary', {
       method: 'POST',
-      body: JSON.stringify({ title: meta.title, author: meta.author, description: meta.description, durationSec: meta.durationSec, chunks }),
+      body: JSON.stringify({
+        kind: meta.kind, type: meta.type, title: meta.title, author: meta.author, description: meta.description,
+        links: meta.links, existingTags: library, chunks,
+      }),
     }).then(({ body }) => {
       clearInterval(tick);
       item.summary = body.summary;
+      // A PDF or file named like "1706.03762" takes the title Claude read inside it.
+      if (item.meta.titleGuess && body.summary.title) item.meta.title = body.summary.title;
       if (item !== current) return;
+      $('title').textContent = item.meta.title || item.meta.url;
       renderSummary(body.summary);
       $('sum-status').hidden = true;
-      if (!$('tags').value.trim() && body.summary.tags?.length) $('tags').value = body.summary.tags.join(', ');
+      if (!item.tagsTouched && body.summary.tags?.length) { selected = new Set(body.summary.tags); renderTags(); }
     }).catch((err) => {
       clearInterval(tick);
       if (item === current) sumStatus('err', `No summary: ${err.message}`);
@@ -534,13 +588,15 @@
     const { meta, chunks } = current;
     $('title').textContent = meta.title || meta.url;
     $('thumb').hidden = !meta.thumbnail;
+    $('thumb').onerror = () => { $('thumb').hidden = true; };
     if (meta.thumbnail) $('thumb').src = meta.thumbnail;
 
-    const facts = [meta.author, fmtDate(meta.publishedAt), fmtLength(meta.durationSec)].filter(Boolean);
+    const length = fmtLength(meta.durationSec);
+    const facts = [meta.author, fmtDate(meta.publishedAt), length && (meta.kind === 'text' ? `${length} read` : length)].filter(Boolean);
     $('facts').replaceChildren(...facts.map((f) => Object.assign(document.createElement('span'), { className: 'label', textContent: f })));
 
     // Show notes: the description, with links made clickable (built as DOM, never innerHTML)
-    const lines = String(meta.description || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const lines = meta.kind === 'text' ? [] : String(meta.description || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     $('shownotes').hidden = !lines.length;
     $('shownotes').open = false;
     $('shownotes-text').replaceChildren(...lines.map((line) => {
@@ -555,8 +611,11 @@
     }));
 
     const frag = document.createDocumentFragment();
-    chunks.forEach((c) => {
+    chunks.forEach((c, i) => {
       const p = document.createElement('p');
+      p.id = `p${i + 1}`;
+      if (c.h) p.className = 'h';
+      if (!Number.isFinite(c.t)) { p.append(document.createTextNode(c.text)); frag.append(p); return; }
       const link = jumpUrl(c.t);
       const t = document.createElement(link ? 'a' : 'span');
       t.className = 't';
@@ -569,7 +628,9 @@
     $('find').value = '';
     $('count').textContent = `${chunks.length} paragraphs`;
 
-    setType(meta.platform === 'youtube' ? 'YouTube' : 'Other');
+    $('toggle-times').hidden = meta.kind === 'text';
+    setType(meta.type || 'Other');
+    renderTags();
     $('send-status').hidden = true;
     $('send').disabled = false;
     $('result').hidden = false;
@@ -585,14 +646,14 @@
 
   $('copy').addEventListener('click', async (e) => {
     const { meta, chunks } = current;
-    const times = $('toggle-times').getAttribute('aria-pressed') === 'true';
+    const times = !isText() && $('toggle-times').getAttribute('aria-pressed') === 'true';
     const head = [meta.title, [meta.author, fmtDate(meta.publishedAt)].filter(Boolean).join(' · '), meta.url].filter(Boolean).join('\n');
     const body = chunks.map((c) => (times ? `[${stamp(c.t)}] ` : '') + c.text).join('\n\n');
     const s = current.summary;
     const sum = s ? [
       s.brief && `In brief\n${s.brief}`,
-      s.keyPoints.length && 'Key points\n' + s.keyPoints.map((k) => `- [${stamp(k.t)}] ${k.point}`).join('\n'),
-    ].filter(Boolean).join('\n\n') + '\n\nTranscript\n' : '';
+      s.keyPoints.length && 'Key points\n' + s.keyPoints.map((k) => (isText() ? `- ${k.point}` : `- [${stamp(k.t)}] ${k.point}`)).join('\n'),
+    ].filter(Boolean).join('\n\n') + (isText() ? '\n\nFull text\n' : '\n\nTranscript\n') : '';
     try {
       await navigator.clipboard.writeText(`${head}\n\n${sum}${body}`);
       e.currentTarget.textContent = 'Copied';
@@ -600,6 +661,46 @@
       e.currentTarget.textContent = 'Copy failed';
     }
     setTimeout(() => { e.currentTarget.textContent = 'Copy'; }, 1600);
+  });
+
+  // ── tags ─────────────────────────────────────────
+  // The chips are the Tags list in Notion. Claude's picks arrive switched on,
+  // and anything not in Notion yet is marked new, so nothing lands unseen.
+  let library = [];
+  let selected = new Set();
+  async function loadLibrary() {
+    try { library = (await api('/api/notion')).body.tags || []; } catch { library = []; }
+    renderTags();
+  }
+  function renderTags() {
+    const on = [...selected];
+    const off = library.filter((t) => !selected.has(t)).sort((a, b) => a.localeCompare(b));
+    $('tags').replaceChildren(...[...on, ...off].map((t) => {
+      const b = Object.assign(document.createElement('button'), { type: 'button', className: 'chip', textContent: t });
+      b.setAttribute('aria-pressed', selected.has(t));
+      if (!library.includes(t)) b.append(Object.assign(document.createElement('span'), { className: 'new', textContent: 'new' }));
+      b.addEventListener('click', () => {
+        selected.has(t) ? selected.delete(t) : selected.add(t);
+        if (current) current.tagsTouched = true;
+        renderTags();
+      });
+      return b;
+    }));
+    const picked = current?.summary?.tags?.length && !current.tagsTouched;
+    $('tags-hint').textContent = picked
+      ? 'Claude picked the dark ones. Tap any tag to add or remove it.'
+      : library.length ? 'Your tags from Notion. Tap to add or remove.' : 'No tags in Notion yet. Add one below.';
+  }
+  $('tag-add').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ',') return;
+    e.preventDefault();
+    const t = e.target.value.trim().toLowerCase().replace(/,/g, '');
+    if (!t) return;
+    const match = library.find((x) => x.toLowerCase() === t) || t;
+    selected.add(match);
+    if (current) current.tagsTouched = true;
+    e.target.value = '';
+    renderTags();
   });
 
   // ── send to Notion ───────────────────────────────
@@ -627,7 +728,7 @@
         body: JSON.stringify({
           ...meta,
           type,
-          tags: $('tags').value.split(',').map((t) => t.trim()).filter(Boolean),
+          tags: [...selected],
           notes: $('notes').value.trim(),
           summary,
           chunks,
@@ -637,6 +738,7 @@
       s('ok', 'Saved. ');
       const a = Object.assign(document.createElement('a'), { href: body.url, target: '_blank', rel: 'noopener', textContent: 'Open in Notion ↗' });
       $('send-text').append(a);
+      for (const t of selected) if (!library.includes(t)) library.push(t);
     } catch (err) {
       s('err', err.message);
       $('send').disabled = false;
@@ -648,12 +750,11 @@
   $('bookmarklet').addEventListener('click', (e) => e.preventDefault());
 
   const incoming = new URLSearchParams(location.search).get('url');
+  if (store.get()) { setLocked(false); loadLibrary(); } else showLock();
   if (incoming) {
     $('url').value = incoming;
     history.replaceState(null, '', location.pathname);
-    if (store.get()) $('get-form').requestSubmit(); else showLock();
-  } else if (!store.get()) {
-    showLock();
+    if (store.get()) $('get-form').requestSubmit();
   }
 </script>
 

@@ -1,4 +1,9 @@
 {
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "functions": {
+    "api/summary.mjs": { "maxDuration": 300 },
+    "api/transcript.mjs": { "maxDuration": 60 },
+    "api/notion.mjs": { "maxDuration": 60 }
+  }
 }

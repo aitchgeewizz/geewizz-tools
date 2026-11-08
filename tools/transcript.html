@@ -129,6 +129,7 @@
   .status.err .label { color: var(--bad); }
   .status a { color: var(--ink); }
   @keyframes pulse { from { opacity: 1; } to { opacity: 0.25; } }
+  .status[hidden] { display: none; }
 
   /* Result */
   .result[hidden] { display: none; }
@@ -147,6 +148,31 @@
   .source h2 { font-size: 26px; font-weight: 500; line-height: 1.15; letter-spacing: -0.03em; }
   .facts { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; }
   .facts .label { color: var(--ink-soft); }
+
+  /* Summary */
+  .summary { margin-top: 16px; }
+  .summary[hidden] { display: none; }
+  .summary .status { margin: 0; }
+  .summary .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px 40px; margin-top: 20px; }
+  .summary .grid[hidden] { display: none; }
+  .summary section > .label { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .summary section > .label::before { content: ''; width: 7px; height: 7px; background: var(--ink); }
+  .summary .wide { grid-column: 1 / -1; }
+  .summary .brief { font-size: 19px; line-height: 1.45; letter-spacing: -0.02em; max-width: 62ch; }
+  .summary ul { list-style: none; }
+  .summary li { font-size: 15px; line-height: 1.5; padding: 8px 0; border-top: 1px solid var(--accent-soft); }
+  .summary li:first-child { border-top: 0; padding-top: 0; }
+  .summary blockquote { font-size: 15px; line-height: 1.5; padding: 8px 0 8px 14px; border-left: 2px solid var(--signal); }
+  .summary blockquote + blockquote { margin-top: 10px; }
+  .summary .who { display: block; margin-top: 4px; color: var(--ink-faint); font-size: 13px; }
+  .summary .kind { color: var(--ink-faint); font-size: 13px; }
+  .summary a { color: var(--ink); }
+  .t-link { font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); text-decoration: none; margin-right: 8px; }
+  .t-link:hover { color: var(--ink); }
+
+  .find { font-size: 14px; padding: 8px 10px; min-width: 0; flex: 1; max-width: 260px; }
+  .text mark { background: color-mix(in srgb, var(--signal) 45%, transparent); color: inherit; border-radius: 2px; }
+  .text p[hidden] { display: none; }
 
   .row { display: grid; grid-template-columns: 1fr 320px; gap: 16px; margin-top: 16px; }
 
@@ -218,7 +244,9 @@
     header { flex-direction: column; align-items: flex-start; }
     .meta { text-align: left; }
     .get { flex-direction: column; }
-    .source, .row { grid-template-columns: 1fr; }
+    .source, .row, .summary .grid { grid-template-columns: 1fr; }
+    .bar { flex-wrap: wrap; }
+    .find { max-width: none; flex-basis: 100%; order: 3; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -237,7 +265,7 @@
     </div>
     <div class="meta label">
       <a href="/">← all tools</a>
-      <span>v0.1</span>
+      <span>v0.2</span>
     </div>
   </header>
 
@@ -268,10 +296,21 @@
       </div>
     </div>
 
+    <div class="panel summary" id="summary" hidden>
+      <div class="status" id="sum-status"><span class="dot"></span><span class="label" id="sum-text"></span></div>
+      <div class="grid" id="sum-grid" hidden>
+        <section class="wide" id="sum-brief-wrap"><span class="label">In brief</span><p class="brief" id="sum-brief"></p></section>
+        <section id="sum-points-wrap"><span class="label">Key points</span><ul id="sum-points"></ul></section>
+        <section id="sum-quotes-wrap"><span class="label">Quotes</span><div id="sum-quotes"></div></section>
+        <section class="wide" id="sum-mentions-wrap"><span class="label">Mentioned</span><ul id="sum-mentions"></ul></section>
+      </div>
+    </div>
+
     <div class="row">
       <div class="panel">
         <div class="bar">
           <span class="label" id="count"></span>
+          <input class="field find" id="find" type="search" placeholder="Find in transcript" aria-label="Find in transcript">
           <div class="actions">
             <button class="btn ghost" id="toggle-times" type="button" aria-pressed="true">Times on</button>
             <button class="btn ghost" id="copy" type="button">Copy</button>
@@ -391,16 +430,105 @@
         }
       }
 
-      current = { meta, chunks: transcript.chunks };
+      current = { meta, chunks: transcript.chunks, summary: null };
       render();
       const words = transcript.chunks.reduce((n, c) => n + c.text.split(/\s+/).length, 0);
       status('ok', `Got ${words.toLocaleString('en-AU')} words`);
+      summarise(current);
     } catch (err) {
       status('err', err.message);
     } finally {
       $('go').disabled = false;
     }
   });
+
+  // ── summary ──────────────────────────────────────
+  const sumStatus = (state, msg) => setStatus($('sum-status'), $('sum-text'), state, msg);
+  const tLink = (t) => {
+    const url = jumpUrl(t);
+    const el = document.createElement(url ? 'a' : 'span');
+    el.className = 't-link';
+    el.textContent = stamp(t);
+    if (url) { el.href = url; el.target = '_blank'; el.rel = 'noopener'; }
+    return el;
+  };
+
+  function summarise(item) {
+    $('summary').hidden = false;
+    $('sum-grid').hidden = true;
+    const started = Date.now();
+    sumStatus('busy', 'Summarising with Claude');
+    const tick = setInterval(() => sumStatus('busy', `Summarising with Claude · ${Math.round((Date.now() - started) / 1000)}s`), 1000);
+    const { meta, chunks } = item;
+    item.summaryPromise = api('/api/summary', {
+      method: 'POST',
+      body: JSON.stringify({ title: meta.title, author: meta.author, description: meta.description, durationSec: meta.durationSec, chunks }),
+    }).then(({ body }) => {
+      clearInterval(tick);
+      item.summary = body.summary;
+      if (item !== current) return;
+      renderSummary(body.summary);
+      $('sum-status').hidden = true;
+      if (!$('tags').value.trim() && body.summary.tags?.length) $('tags').value = body.summary.tags.join(', ');
+    }).catch((err) => {
+      clearInterval(tick);
+      if (item === current) sumStatus('err', `No summary: ${err.message}`);
+    });
+  }
+
+  function renderSummary(s) {
+    $('sum-brief').textContent = s.brief;
+    $('sum-brief-wrap').hidden = !s.brief;
+    $('sum-points').replaceChildren(...s.keyPoints.map((k) => {
+      const li = document.createElement('li');
+      li.append(tLink(k.t), k.point);
+      return li;
+    }));
+    $('sum-points-wrap').hidden = !s.keyPoints.length;
+    $('sum-quotes').replaceChildren(...s.quotes.map((q) => {
+      const b = document.createElement('blockquote');
+      const who = document.createElement('span');
+      who.className = 'who';
+      who.append(tLink(q.t), q.speaker || '');
+      b.append(q.quote, who);
+      return b;
+    }));
+    $('sum-quotes-wrap').hidden = !s.quotes.length;
+    $('sum-mentions').replaceChildren(...s.mentions.map((m) => {
+      const li = document.createElement('li');
+      const name = m.url ? Object.assign(document.createElement('a'), { href: m.url, target: '_blank', rel: 'noopener', textContent: m.name }) : document.createTextNode(m.name);
+      const kind = Object.assign(document.createElement('span'), { className: 'kind', textContent: ` · ${m.kind} · ` });
+      li.append(name, kind, tLink(m.t));
+      return li;
+    }));
+    $('sum-mentions-wrap').hidden = !s.mentions.length;
+    $('sum-grid').hidden = false;
+  }
+
+  // ── find in transcript ───────────────────────────
+  function find(q) {
+    q = q.trim().toLowerCase();
+    let hits = 0;
+    $('text').querySelectorAll('p').forEach((p, i) => {
+      const body = p.lastChild;
+      const textNode = document.createTextNode(current.chunks[i].text);
+      if (!q) { p.hidden = false; body.replaceWith(textNode); return; }
+      const lower = current.chunks[i].text.toLowerCase();
+      if (!lower.includes(q)) { p.hidden = true; return; }
+      p.hidden = false;
+      const span = document.createElement('span');
+      let last = 0, at;
+      while ((at = lower.indexOf(q, last)) !== -1) {
+        span.append(current.chunks[i].text.slice(last, at), Object.assign(document.createElement('mark'), { textContent: current.chunks[i].text.slice(at, at + q.length) }));
+        last = at + q.length;
+        hits++;
+      }
+      span.append(current.chunks[i].text.slice(last));
+      body.replaceWith(span);
+    });
+    $('count').textContent = q ? `${hits} match${hits === 1 ? '' : 'es'}` : `${current.chunks.length} paragraphs`;
+  }
+  $('find').addEventListener('input', (e) => find(e.target.value));
 
   function render() {
     const { meta, chunks } = current;
@@ -438,6 +566,7 @@
       frag.append(p);
     });
     $('text').replaceChildren(frag);
+    $('find').value = '';
     $('count').textContent = `${chunks.length} paragraphs`;
 
     setType(meta.platform === 'youtube' ? 'YouTube' : 'Other');
@@ -459,8 +588,13 @@
     const times = $('toggle-times').getAttribute('aria-pressed') === 'true';
     const head = [meta.title, [meta.author, fmtDate(meta.publishedAt)].filter(Boolean).join(' · '), meta.url].filter(Boolean).join('\n');
     const body = chunks.map((c) => (times ? `[${stamp(c.t)}] ` : '') + c.text).join('\n\n');
+    const s = current.summary;
+    const sum = s ? [
+      s.brief && `In brief\n${s.brief}`,
+      s.keyPoints.length && 'Key points\n' + s.keyPoints.map((k) => `- [${stamp(k.t)}] ${k.point}`).join('\n'),
+    ].filter(Boolean).join('\n\n') + '\n\nTranscript\n' : '';
     try {
-      await navigator.clipboard.writeText(`${head}\n\n${body}`);
+      await navigator.clipboard.writeText(`${head}\n\n${sum}${body}`);
       e.currentTarget.textContent = 'Copied';
     } catch {
       e.currentTarget.textContent = 'Copy failed';
@@ -482,7 +616,12 @@
     $('send').disabled = true;
     s('busy', 'Sending');
     try {
-      const { meta, chunks } = current;
+      if (current.summaryPromise && !current.summary) {
+        s('busy', 'Waiting for the summary');
+        await current.summaryPromise;
+        s('busy', 'Sending');
+      }
+      const { meta, chunks, summary } = current;
       const { body } = await api('/api/notion', {
         method: 'POST',
         body: JSON.stringify({
@@ -490,6 +629,7 @@
           type,
           tags: $('tags').value.split(',').map((t) => t.trim()).filter(Boolean),
           notes: $('notes').value.trim(),
+          summary,
           chunks,
         }),
       });

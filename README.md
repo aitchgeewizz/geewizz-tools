@@ -40,10 +40,11 @@ You can clear your key from the tool's settings panel any time.
 
 ## Transcript: the one tool with a server
 
-Transcript can't run purely in the browser: YouTube and Notion both block direct browser requests. So it uses two small Vercel functions in `api/`:
+Transcript can't run purely in the browser: YouTube and Notion both block direct browser requests. So it uses three small Vercel functions in `api/`:
 
 - `api/transcript.mjs` asks [Supadata](https://supadata.ai) for the transcript and video details. Long or caption-less videos come back as a job the page polls.
-- `api/notion.mjs` creates a page in your Notion database, with the transcript as the page body.
+- `api/summary.mjs` sends the transcript to Claude (Opus 5.5) for an in-brief summary, key points, quotes, mentions and suggested tags, each linked to its timestamp. Links only come from the show notes, never guessed.
+- `api/notion.mjs` creates a page in your Notion database: summary, show notes, then the transcript.
 
 Both are locked behind a passcode, so a public deploy can't spend your credits or write to your Notion. Set these in Vercel → Settings → Environment Variables:
 
@@ -53,8 +54,9 @@ Both are locked behind a passcode, so a public deploy can't spend your credits o
 | `NOTION_TOKEN` | An internal integration secret from notion.so/profile/integrations |
 | `NOTION_DATABASE_ID` | The database the pages go into. Share it with the integration (••• → Connections) |
 | `TOOLS_PASSCODE` | Anything you like. The tool asks for it once per browser |
+| `ANTHROPIC_API_KEY` | From platform.claude.com → API keys. Without it the tool still works, just without summaries |
 
-The Notion database needs these properties: Title (title), Source URL (url), Podcast or Channel (text), Published (date), Added (date), Type (select: YouTube, Podcast, Article, Other), Tags (multi-select), Status (select: Inbox, Reviewed), Minutes (number), Notes (text).
+The Notion database needs these properties: Title (title), Source URL (url), Podcast or Channel (text), Summary (text), Published (date), Added (date), Type (select: YouTube, Podcast, Article, Other), Tags (multi-select), Status (select: Inbox, Reviewed), Minutes (number), Notes (text).
 
 There's a bookmarklet at the bottom of the tool. Drag it to your bookmarks bar, click it on any YouTube video, and the tool opens with that link already fetching.
 

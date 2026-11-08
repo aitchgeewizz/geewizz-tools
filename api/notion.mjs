@@ -90,6 +90,39 @@ export function showNoteBlocks({ description, platform, id }) {
   });
 }
 
+// The summary, as Granola-style sections at the top of the page.
+const heading = (t) => ({ object: 'block', type: 'heading_2', heading_2: { rich_text: [text(t)] } });
+const para = (rich) => ({ object: 'block', type: 'paragraph', paragraph: { rich_text: rich } });
+const bullet = (rich) => ({ object: 'block', type: 'bulleted_list_item', bulleted_list_item: { rich_text: rich } });
+
+export function summaryBlocks({ summary, platform, id }) {
+  if (!summary) return [];
+  const at = (t) => {
+    const url = platform === 'youtube' && id ? `https://www.youtube.com/watch?v=${id}&t=${t}s` : null;
+    return text(stamp(t), { text: url ? { link: { url } } : {}, annotations: { code: true } });
+  };
+  const clip = (s) => String(s).slice(0, MAX_TEXT);
+  const out = [];
+  if (summary.brief) out.push(heading('In brief'), para([text(clip(summary.brief))]));
+  if (summary.keyPoints?.length) {
+    out.push(heading('Key points'), ...summary.keyPoints.map((k) => bullet([at(k.t), text(' ' + clip(k.point))])));
+  }
+  if (summary.quotes?.length) {
+    out.push(heading('Quotes'), ...summary.quotes.map((q) => ({
+      object: 'block', type: 'quote',
+      quote: { rich_text: [text(clip(q.quote)), text('\n'), ...(q.speaker ? [text(clip(q.speaker) + ' · ', { annotations: { italic: true } })] : []), at(q.t)] },
+    })));
+  }
+  if (summary.mentions?.length) {
+    out.push(heading('Mentioned'), ...summary.mentions.map((m) => bullet([
+      text(clip(m.name), m.url ? { text: { link: { url: m.url } } } : {}),
+      text(` · ${m.kind} · `, { annotations: { color: 'gray' } }),
+      at(m.t),
+    ])));
+  }
+  return out;
+}
+
 export function pageProperties(b, today) {
   const props = {
     Title: { title: [text(String(b.title || b.url || 'Untitled').slice(0, MAX_TEXT))] },
@@ -101,6 +134,7 @@ export function pageProperties(b, today) {
   if (b.author) props[CHANNEL] = { rich_text: [text(String(b.author).slice(0, MAX_TEXT), b.authorUrl ? { text: { link: { url: b.authorUrl } } } : {})] };
   if (b.publishedAt) props.Published = { date: { start: String(b.publishedAt).slice(0, 10) } };
   if (Number.isFinite(b.durationSec)) props.Minutes = { number: Math.round(b.durationSec / 60) };
+  if (b.summary?.brief) props.Summary = { rich_text: [text(String(b.summary.brief).slice(0, MAX_TEXT))] };
   if (b.notes) props.Notes = { rich_text: [text(String(b.notes).slice(0, MAX_TEXT))] };
   const tags = (b.tags || []).map((t) => String(t).trim().replace(/,/g, '')).filter(Boolean).slice(0, 20);
   if (tags.length) props.Tags = { multi_select: tags.map((name) => ({ name: name.slice(0, 100) })) };
@@ -121,6 +155,7 @@ export default async function handler(req, res) {
 
   const head = [];
   if (b.platform === 'youtube' && b.url) head.push({ object: 'block', type: 'video', video: { type: 'external', external: { url: b.url } } });
+  head.push(...summaryBlocks(b));
   const notes = showNoteBlocks(b);
   if (notes.length) head.push({ object: 'block', type: 'heading_2', heading_2: { rich_text: [text('Show notes')] } }, ...notes);
   head.push({ object: 'block', type: 'heading_2', heading_2: { rich_text: [text('Transcript')] } });

@@ -1,0 +1,9 @@
+{
+  "name": "geewizz-tools",
+  "private": true,
+  "type": "module",
+  "description": "Static tools; package.json exists only for the server functions in api/.",
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0"
+  }
+}

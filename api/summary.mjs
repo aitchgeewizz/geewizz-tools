@@ -95,6 +95,9 @@ function tidy(s, b) {
   };
 }
 
+// Never let a key end up in the logs.
+const redact = (s) => String(s ?? '').replace(/sk-ant-[A-Za-z0-9_-]+/g, 'sk-ant-[hidden]').slice(0, 500);
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method', message: 'Use POST.' });
   if (!checkPasscode(req, res) || !requireEnv(res, 'ANTHROPIC_API_KEY')) return;
@@ -104,7 +107,13 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'invalid-request', message: 'Nothing to summarise yet.' });
   }
 
-  const client = new Anthropic(); // reads ANTHROPIC_API_KEY
+  // Catch a pasted snippet (or stray spaces) before it reaches a request header.
+  const apiKey = process.env.ANTHROPIC_API_KEY.trim();
+  if (!/^sk-ant-[A-Za-z0-9_-]+$/.test(apiKey)) {
+    return res.status(500).json({ error: 'not-configured', message: 'ANTHROPIC_API_KEY in Vercel should be just the key, starting sk-ant-, with nothing else.' });
+  }
+
+  const client = new Anthropic({ apiKey });
   try {
     // Streaming keeps a long episode from hitting an HTTP timeout. The server-side
     // fallback re-runs the request on another model if a safety classifier declines.
@@ -137,10 +146,10 @@ export default async function handler(req, res) {
       return res.status(429).json({ error: 'busy', message: 'Claude is busy. Try again in a minute.' });
     }
     if (e instanceof Anthropic.APIError) {
-      console.error('anthropic', e.status, e.message);
+      console.error('anthropic', e.status, redact(e.message));
       return res.status(502).json({ error: 'anthropic', message: `Claude said ${e.status}. Try again.` });
     }
-    console.error('summary', e);
+    console.error('summary', e?.name, redact(e?.message));
     return res.status(500).json({ error: 'summary', message: 'The summary did not come back in one piece. Try again.' });
   }
 }

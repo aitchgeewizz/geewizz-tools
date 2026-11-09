@@ -1,8 +1,10 @@
 // Works out what a link is and turns it into { meta, chunks }.
 //   timed (has a transcript): YouTube, TikTok, Instagram, X, Facebook, Apple Podcasts, audio and video files
-//   text (has paragraphs):    articles and blog posts, PDFs
+//   text (has paragraphs):    articles and blog posts (Readability, like a browser's reader view), PDFs
 // Timed chunks carry t (seconds). Text chunks carry t: null, and h: true for headings.
 import { extractText, getDocumentProxy, getMeta } from 'unpdf';
+import { Readability } from '@mozilla/readability';
+import { parseHTML } from 'linkedom';
 
 const API = 'https://api.supadata.ai/v1';
 const CHUNK_CHARS = 900;            // roughly a paragraph per block in Notion
@@ -186,7 +188,34 @@ export function markdownParagraphs(md) {
     .replace(/(\*\*|__)(.*?)\1/g, '$2')
     .split(/\n\s*\n/)
     .map((p) => p.split('\n').map((l) => l.replace(/^\s*>\s?/, '').trim()).join(' ').trim())
-    .filter((p) => p && !/^[-*_=\s|:]+$/.test(p));
+    .filter((p) => p && !/^[-*_=\s|:]+$/.test(p))
+    // Site menus come through as runs of "* Item * Item * Item"
+    .filter((p) => (p.match(/(^|\s)\*\s/g) || []).length < 4);
+}
+
+// Reader view: the article body alone, without menus, footers or sign-up boxes.
+// Returns null when the page has no article in its HTML (built by JavaScript).
+const BLOCKS = 'h1,h2,h3,h4,h5,h6,p,li,blockquote,figcaption,pre';
+export function readable(html, base) {
+  let article;
+  try {
+    const { document } = parseHTML(html);
+    article = new Readability(document).parse();
+  } catch { return null; }
+  if (!article || (article.textContent || '').trim().length < 600) return null;
+  const { document } = parseHTML(`<!doctype html><html><body>${article.content}</body></html>`);
+  const paragraphs = [];
+  for (const el of document.querySelectorAll(BLOCKS)) {
+    if (el.querySelector(BLOCKS)) continue; // only the innermost blocks, so nothing repeats
+    const t = el.textContent.replace(/\s+/g, ' ').trim();
+    if (!t) continue;
+    const tag = el.tagName.toLowerCase();
+    paragraphs.push(/^h\d$/.test(tag) ? `## ${t}` : tag === 'li' ? `• ${t}` : t);
+  }
+  const links = [...new Set([...document.querySelectorAll('a[href]')].map((a) => {
+    try { return new URL(a.getAttribute('href'), base).href; } catch { return null; }
+  }).filter((u) => u && /^https?:/.test(u)))];
+  return { paragraphs, links, title: article.title, byline: article.byline, site: article.siteName, publishedAt: article.publishedTime, excerpt: article.excerpt };
 }
 
 // Title, author, date and image from the page head. Regex is enough for meta tags.
@@ -242,6 +271,25 @@ async function pdfFrom(u, bytes) {
 
 async function articleFrom(u, html) {
   const h = html ? headMeta(html, u.href) : {};
+  const r = html ? readable(html, u.href) : null;
+  if (r) {
+    const chunks = toChunks(r.paragraphs);
+    const title = h.title || r.title;
+    if (chunks[0]?.h && title && chunks[0].text.toLowerCase() === title.toLowerCase()) chunks.shift();
+    const site = h.site || r.site || u.hostname.replace(/^www\./, '');
+    const by = r.byline || h.author;
+    return {
+      meta: merge(empty(u.href), {
+        kind: 'text', type: 'Article', platform: 'web',
+        title, author: by ? `${by} · ${site}` : site, authorUrl: u.origin,
+        publishedAt: h.publishedAt || r.publishedAt, thumbnail: h.thumbnail,
+        description: h.description || r.excerpt, links: r.links.slice(0, 300),
+        embed: { type: 'bookmark', url: u.href }, durationSec: readMinutes(chunks),
+      }),
+      transcript: { chunks },
+    };
+  }
+  // No article in the HTML (the page is built by JavaScript), so ask Supadata to render it.
   const s = await supadata(`/web/scrape?url=${encodeURIComponent(u.href)}&noLinks=true`);
   if (s.status !== 200) {
     console.warn('supadata /web/scrape', s.status, s.body?.error);

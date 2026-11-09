@@ -44,6 +44,7 @@ Transcript can't run purely in the browser: YouTube and Notion both block direct
 
 - `api/transcript.mjs` works out what the link is (`api/_sources.mjs`). Videos, podcasts and media files get a transcript from [Supadata](https://supadata.ai); long ones come back as a job the page polls. Apple Podcasts episodes are found through Apple's free lookup API. Articles are read like a browser reader view ([Readability](https://github.com/mozilla/readability)), so menus and footers are left out; pages built by JavaScript fall back to Supadata's web scrape. PDFs with [unpdf](https://github.com/unjs/unpdf). Spotify doesn't share audio, so it isn't supported.
 - `api/summary.mjs` sends the text to Claude (Opus 5.5) for an in-brief summary, key points, quotes, mentions and tags, each linked to its timestamp (or paragraph, for articles and PDFs). Links only come from the show notes or the page itself, never guessed. Tags come from the ones already in Notion where they fit.
+- `api/ask.mjs` powers the **Ask** tool: it finds Research library pages by Topic and date, has Claude pick the most relevant (when there are more than 8), reads them in full and answers with citations like [S2] that link back to each page.
 - `api/notion.mjs` lists the Tags and Topics already in Notion (GET), and creates a page (POST): the video, audio, PDF or a bookmark, then the summary, show notes, and the transcript or full text.
 
 Both are locked behind a passcode, so a public deploy can't spend your credits or write to your Notion. Set these in Vercel → Settings → Environment Variables:

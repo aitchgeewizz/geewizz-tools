@@ -12,7 +12,7 @@ const BATCH = 100;       // and a request at 100 blocks
 const TYPES = ['YouTube', 'Podcast', 'Video', 'Article', 'PDF', 'Other'];
 const CHANNEL = 'Podcast or Channel';
 
-async function notion(path, method, body) {
+export async function notion(path, method, body, tries = 3) {
   const r = await fetch(`${NOTION}${path}`, {
     method,
     headers: {
@@ -22,6 +22,11 @@ async function notion(path, method, body) {
     },
     ...(body && { body: JSON.stringify(body) }),
   });
+  // Notion rate-limits at about 3 requests a second; wait as asked and retry.
+  if (r.status === 429 && tries > 1) {
+    await new Promise((ok) => setTimeout(ok, (Number(r.headers.get('retry-after')) || 1) * 1000));
+    return notion(path, method, body, tries - 1);
+  }
   const json = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(json.message || `Notion said ${r.status}`), { status: r.status, code: json.code });
   return json;

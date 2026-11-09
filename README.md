@@ -44,7 +44,7 @@ Transcript can't run purely in the browser: YouTube and Notion both block direct
 
 - `api/transcript.mjs` works out what the link is (`api/_sources.mjs`). Videos, podcasts and media files get a transcript from [Supadata](https://supadata.ai); long ones come back as a job the page polls. Apple Podcasts episodes are found through Apple's free lookup API. Articles are read with Supadata's web scrape, PDFs with [unpdf](https://github.com/unjs/unpdf). Spotify doesn't share audio, so it isn't supported.
 - `api/summary.mjs` sends the text to Claude (Opus 5.5) for an in-brief summary, key points, quotes, mentions and tags, each linked to its timestamp (or paragraph, for articles and PDFs). Links only come from the show notes or the page itself, never guessed. Tags come from the ones already in Notion where they fit.
-- `api/notion.mjs` lists the Tags already in Notion (GET), and creates a page (POST): the video, audio, PDF or a bookmark, then the summary, show notes, and the transcript or full text.
+- `api/notion.mjs` lists the Tags and Topics already in Notion (GET), and creates a page (POST): the video, audio, PDF or a bookmark, then the summary, show notes, and the transcript or full text.
 
 Both are locked behind a passcode, so a public deploy can't spend your credits or write to your Notion. Set these in Vercel → Settings → Environment Variables:
 
@@ -56,7 +56,7 @@ Both are locked behind a passcode, so a public deploy can't spend your credits o
 | `TOOLS_PASSCODE` | Anything you like. The tool asks for it once per browser |
 | `ANTHROPIC_API_KEY` | From platform.claude.com → API keys. Without it the tool still works, just without summaries |
 
-The Notion database needs these properties: Title (title), Source URL (url), Podcast or Channel (text), Summary (text), Published (date), Added (date), Type (select: YouTube, Podcast, Video, Article, PDF, Other), Tags (multi-select), Status (select: Inbox, Reviewed), Minutes (number), Notes (text).
+The Notion database needs these properties: Title (title), Source URL (url), Podcast or Channel (text), Summary (text), Published (date), Added (date), Type (select: YouTube, Podcast, Video, Article, PDF, Other), Topic (multi-select: what you were researching), Tags (multi-select), Status (select: Inbox, Reviewed, Superseded), Minutes (number), Notes (text).
 
 There's a bookmarklet at the bottom of the tool. Drag it to your bookmarks bar, click it on any video, article or PDF, and the tool opens with that link already fetching.
 

@@ -79,6 +79,7 @@ function prompt(b) {
     b.description ? `${text ? 'Description' : 'Show notes'}:\n${b.description}` : '',
     b.links?.length ? `Links on the page:\n${b.links.slice(0, 300).join('\n')}` : '',
     `Library tags: ${b.existingTags?.length ? b.existingTags.join(', ') : 'none yet'}`,
+    b.topics?.length ? `Being researched: ${b.topics.join('; ')}. Keep the summary true to the whole piece, but make sure anything that bears on this is in the key points.` : '',
     `${text ? 'Text' : 'Transcript'}${cut ? ' (cut short, it is very long)' : ''}:\n${lines}`,
   ].filter(Boolean).join('\n\n');
 }

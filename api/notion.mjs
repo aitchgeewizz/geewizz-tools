@@ -1,6 +1,6 @@
-// GET  /api/notion  -> { tags[] }  the Tags already in the Research library
+// GET  /api/notion  -> { tags[], topics[] }  the Tags and Topics already in the Research library
 // POST /api/notion  { title, url, author, authorUrl, description, thumbnail, publishedAt, durationSec,
-//                     kind, type, embed, tags[], notes, platform, id, summary, chunks[] }
+//                     kind, type, embed, topics[], tags[], notes, platform, id, summary, chunks[] }
 // Creates a page in the Research library database, with the transcript or full text as the page body.
 // In a transcript each paragraph starts with a timestamp that links back to that moment.
 import { checkPasscode, requireEnv, readBody } from './_lib.mjs';
@@ -141,8 +141,9 @@ export function pageProperties(b, today) {
   if (Number.isFinite(b.durationSec)) props.Minutes = { number: Math.round(b.durationSec / 60) };
   if (b.summary?.brief) props.Summary = { rich_text: [text(String(b.summary.brief).slice(0, MAX_TEXT))] };
   if (b.notes) props.Notes = { rich_text: [text(String(b.notes).slice(0, MAX_TEXT))] };
-  const tags = (b.tags || []).map((t) => String(t).trim().replace(/,/g, '')).filter(Boolean).slice(0, 20);
-  if (tags.length) props.Tags = { multi_select: tags.map((name) => ({ name: name.slice(0, 100) })) };
+  const list = (v) => (v || []).map((t) => String(t).trim().replace(/,/g, '')).filter(Boolean).slice(0, 20).map((name) => ({ name: name.slice(0, 100) }));
+  if (list(b.tags).length) props.Tags = { multi_select: list(b.tags) };
+  if (list(b.topics).length) props.Topic = { multi_select: list(b.topics) };
   return props;
 }
 
@@ -158,8 +159,8 @@ function embedBlock(b) {
 async function listTags(res) {
   try {
     const db = await notion(`/databases/${process.env.NOTION_DATABASE_ID}`, 'GET');
-    const tags = (db.properties?.Tags?.multi_select?.options || []).map((o) => o.name);
-    return res.json({ tags });
+    const names = (p) => (db.properties?.[p]?.multi_select?.options || []).map((o) => o.name);
+    return res.json({ tags: names('Tags'), topics: names('Topic') });
   } catch (e) {
     return res.status(e.status || 500).json({ error: e.code || 'notion', message: e.message });
   }

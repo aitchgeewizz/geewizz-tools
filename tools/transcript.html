@@ -282,7 +282,7 @@
     </div>
     <div class="meta label">
       <a href="/">← all tools</a>
-      <span>v0.3</span>
+      <span>v0.4</span>
     </div>
   </header>
 
@@ -338,6 +338,10 @@
 
       <form class="panel send" id="send-form">
         <h3>Send to Notion</h3>
+        <span class="label" id="topics-label">Topic</span>
+        <p class="chips-hint">What you're researching. It stays picked for the next link.</p>
+        <div class="chips" id="topics" role="group" aria-labelledby="topics-label"></div>
+        <input class="field tag-add" id="topic-add" placeholder="Start a new topic and press Enter" autocomplete="off">
         <span class="label">Type</span>
         <div class="seg" id="type" role="group" aria-label="Type">
           <button type="button" data-v="YouTube" aria-pressed="true">YouTube</button>
@@ -512,7 +516,7 @@
       method: 'POST',
       body: JSON.stringify({
         kind: meta.kind, type: meta.type, title: meta.title, author: meta.author, description: meta.description,
-        links: meta.links, existingTags: library, chunks,
+        links: meta.links, existingTags: library, topics: [...topics], chunks,
       }),
     }).then(({ body }) => {
       clearInterval(tick);
@@ -668,10 +672,40 @@
   // and anything not in Notion yet is marked new, so nothing lands unseen.
   let library = [];
   let selected = new Set();
+  // Topics: what you're researching. Remembered in this browser between links.
+  const TOPIC_KEY = 'geewizz-tools-topics';
+  let topicLibrary = [];
+  let topics = new Set((() => { try { return JSON.parse(localStorage.getItem(TOPIC_KEY) || '[]'); } catch { return []; } })());
+  const saveTopics = () => { try { localStorage.setItem(TOPIC_KEY, JSON.stringify([...topics])); } catch {} };
   async function loadLibrary() {
-    try { library = (await api('/api/notion')).body.tags || []; } catch { library = []; }
+    try {
+      const { body } = await api('/api/notion');
+      library = body.tags || [];
+      topicLibrary = body.topics || [];
+    } catch { library = []; }
     renderTags();
+    renderTopics();
   }
+  function renderTopics() {
+    const all = [...new Set([...topicLibrary, ...topics])];
+    $('topics').replaceChildren(...all.map((t) => {
+      const b = Object.assign(document.createElement('button'), { type: 'button', className: 'chip', textContent: t });
+      b.setAttribute('aria-pressed', topics.has(t));
+      if (!topicLibrary.includes(t)) b.append(Object.assign(document.createElement('span'), { className: 'new', textContent: 'new' }));
+      b.addEventListener('click', () => { topics.has(t) ? topics.delete(t) : topics.add(t); saveTopics(); renderTopics(); });
+      return b;
+    }));
+  }
+  $('topic-add').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const t = e.target.value.trim().replace(/,/g, '');
+    if (!t) return;
+    topics.add(topicLibrary.find((x) => x.toLowerCase() === t.toLowerCase()) || t);
+    saveTopics();
+    e.target.value = '';
+    renderTopics();
+  });
   function renderTags() {
     const on = [...selected];
     const off = library.filter((t) => !selected.has(t)).sort((a, b) => a.localeCompare(b));
@@ -729,6 +763,7 @@
           ...meta,
           type,
           tags: [...selected],
+          topics: [...topics],
           notes: $('notes').value.trim(),
           summary,
           chunks,
@@ -739,6 +774,8 @@
       const a = Object.assign(document.createElement('a'), { href: body.url, target: '_blank', rel: 'noopener', textContent: 'Open in Notion ↗' });
       $('send-text').append(a);
       for (const t of selected) if (!library.includes(t)) library.push(t);
+      for (const t of topics) if (!topicLibrary.includes(t)) topicLibrary.push(t);
+      renderTopics();
     } catch (err) {
       s('err', err.message);
       $('send').disabled = false;
